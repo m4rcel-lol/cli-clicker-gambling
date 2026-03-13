@@ -235,7 +235,8 @@ fn build_identity() -> String {
 fn bind_chat_socket() -> Option<UdpSocket> {
     let sock = UdpSocket::bind(format!("0.0.0.0:{}", CHAT_PORT)).ok()?;
     sock.set_broadcast(true).ok()?;
-    sock.set_nonblocking(false).ok()?;
+    // Set a read timeout so the receiver thread doesn't block indefinitely
+    sock.set_read_timeout(Some(std::time::Duration::from_millis(200))).ok()?;
     Some(sock)
 }
 
@@ -259,8 +260,12 @@ fn receiver_thread(
                     }
                 }
             }
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                std::thread::sleep(std::time::Duration::from_millis(50));
+            Err(ref e)
+                if e.kind() == io::ErrorKind::WouldBlock
+                    || e.kind() == io::ErrorKind::TimedOut =>
+            {
+                // Read timeout or would-block: just loop and try again
+                continue;
             }
             Err(_) => {
                 std::thread::sleep(std::time::Duration::from_millis(200));

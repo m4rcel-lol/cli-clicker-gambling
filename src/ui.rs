@@ -1357,12 +1357,12 @@ fn render_roulette(frame: &mut Frame, area: Rect, game: &GameState, casino: &Cas
 
         if result.won {
             lines.push(Line::from(Span::styled(
-                format!(" 🎉 You won! +{:.0} cookies!", result.net),
+                format!(" 🎉 You won! +{} cookies!", format_number(result.net)),
                 Style::default().fg(GREEN_BRIGHT).add_modifier(Modifier::BOLD),
             )));
         } else {
             lines.push(Line::from(Span::styled(
-                format!(" 💸 Lost {:.0} cookies.", result.wager),
+                format!(" 💸 Lost {} cookies.", format_number(result.wager)),
                 Style::default().fg(RED_BRIGHT),
             )));
         }
@@ -1497,22 +1497,22 @@ fn render_blackjack(frame: &mut Frame, area: Rect, game: &GameState, casino: &Ca
             if let Some(ref result) = casino.last_blackjack {
                 let (msg, color) = match result.outcome {
                     crate::casino::BlackjackOutcome::PlayerBlackjack => {
-                        (format!("🎉 BLACKJACK! +{:.0} cookies!", result.net), GREEN_BRIGHT)
+                        (format!("🎉 BLACKJACK! +{} cookies!", format_number(result.net)), GREEN_BRIGHT)
                     }
                     crate::casino::BlackjackOutcome::PlayerWin => {
-                        (format!("🎉 You win! +{:.0} cookies!", result.net), GREEN_BRIGHT)
+                        (format!("🎉 You win! +{} cookies!", format_number(result.net)), GREEN_BRIGHT)
                     }
                     crate::casino::BlackjackOutcome::DealerBust => {
-                        (format!("🎉 Dealer busts! +{:.0} cookies!", result.net), GREEN_BRIGHT)
+                        (format!("🎉 Dealer busts! +{} cookies!", format_number(result.net)), GREEN_BRIGHT)
                     }
                     crate::casino::BlackjackOutcome::Push => {
                         ("🤝 Push! Bet returned.".to_string(), GOLD)
                     }
                     crate::casino::BlackjackOutcome::PlayerBust => {
-                        (format!("💥 BUST! Lost {:.0} cookies.", result.wager), RED_BRIGHT)
+                        (format!("💥 BUST! Lost {} cookies.", format_number(result.wager)), RED_BRIGHT)
                     }
                     crate::casino::BlackjackOutcome::DealerWin => {
-                        (format!("😞 Dealer wins. Lost {:.0} cookies.", result.wager), RED_BRIGHT)
+                        (format!("😞 Dealer wins. Lost {} cookies.", format_number(result.wager)), RED_BRIGHT)
                     }
                 };
                 lines.push(Line::from(Span::styled(

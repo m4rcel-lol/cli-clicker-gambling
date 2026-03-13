@@ -40,7 +40,8 @@ You are a cookie tycoon. Click to bake. Buy buildings to automate production. Wa
 - **🔬 Upgrades System** – 8 purchasable upgrades (2 per building) that multiply a building's CPS output; press `[T]` to toggle the Upgrades tab
 - **✨ Golden Cookies** – random golden cookies appear every ~2 minutes; press `[C]` quickly to collect a bonus!
 - **🌟 Prestige System (Ascension)** – reach 1,000,000 total cookies to unlock Heavenly Chips (+1% global CPS per chip, permanent)
-- **🎰 Casino Minigames** – Slot Machine, Coin Flip, Dice Wager with lifetime stats tracking
+- **🎰 Casino Minigames** – Slot Machine, Coin Flip, Dice Wager, Roulette, Blackjack with lifetime stats tracking
+- **💬 Global Chat** – UDP broadcast chat connecting all players on the same network with `$user@hostname` pinging and Tab-completion
 - **💾 Auto-Save / Manual Save** – saves every 60 s to `$XDG_CONFIG_HOME/cookie_clicker/save.json`
 - **⚡ Multi-threaded** – input and tick threads feed a single event channel, keeping CPS ticking even while you're idle
 
@@ -87,6 +88,7 @@ cargo build --release
 | `T` | Toggle between Buildings and Upgrades tab |
 | `C` | Collect a Golden Cookie (when one appears!) |
 | `G` | Toggle Casino view |
+| `/` | Open Global Chat |
 | `A` | Ascend (Prestige) – only when unlocked |
 | `S` | Manual save |
 | `Q` / `Ctrl-C` | Quit (auto-saves) |
@@ -98,10 +100,42 @@ cargo build --release
 | `S` | Slot Machine |
 | `F` | Coin Flip |
 | `D` | Dice Wager |
+| `R` | Roulette |
+| `B` | Blackjack |
 | `G` | Return to Casino menu / main game |
 | `0-9` | Enter wager / guess |
-| `Enter` | Confirm / flip / roll |
+| `Enter` | Confirm / flip / roll / deal |
 | `Backspace` | Erase digit |
+
+### Roulette Keybindings (after confirming wager)
+
+| Key | Action |
+|-----|--------|
+| `R` | Bet Red (2×) |
+| `B` | Bet Black (2×) |
+| `Z` | Bet Green/Zero (14×) |
+| `O` | Bet Odd (2×) |
+| `E` | Bet Even (2×) |
+| `L` | Bet Low 1-18 (2×) |
+| `H` | Bet High 19-36 (2×) |
+
+### Blackjack Keybindings
+
+| Key | Action |
+|-----|--------|
+| `H` | Hit (draw a card) |
+| `S` | Stand (end your turn) |
+| `N` | New hand (after result) |
+
+### Chat Keybindings
+
+| Key | Action |
+|-----|--------|
+| `/` | Open chat from main game |
+| `Esc` | Close chat |
+| `Enter` | Send message |
+| `Tab` | Autocomplete `$user@host` ping |
+| `$` | Start typing a ping (e.g. `$alice@pc1`) |
 
 ---
 
@@ -159,9 +193,24 @@ Ascending resets your cookies, buildings, and upgrades, but grants **Heavenly Ch
 | Slot Machine | 100 cookies fixed | Weighted RNG | 3×🍒=5× · 3×🍋=3× · 3×🔔=7× · 3×💎=25× · 3×7=100× |
 | Coin Flip | Custom (min 10) | 50/50 | 2× bet |
 | Dice Wager | Custom (min 10) | 1/6 | 5× bet (net +4×) |
+| Roulette | Custom (min 10) | Various | Red/Black 2× · Green 14× · Odd/Even 2× · Hi/Lo 2× |
+| Blackjack | Custom (min 25) | ~49% | Win 2× · Blackjack 2.5× · Push returns bet |
 
 The casino menu displays your **lifetime wagered / won / net** stats.
 The house maintains an edge: slot symbols are weighted so 7️⃣ appears ~5% of the time.
+
+### Global Chat
+
+Press **`/`** to open the global chat panel. All game instances running on the same local
+network can communicate in real time via UDP broadcast.
+
+- **Identity**: Your chat name is `username@hostname` (auto-detected from your system)
+- **Pinging**: Type `$username@hostname` to ping another user. When someone is pinged, their
+  terminal plays the system bell sound (desktop environment alert/error noise)
+- **Tab Completion**: After typing `$`, press `Tab` to autocomplete known usernames. Press
+  `Tab` repeatedly to cycle through matching users
+- **Message History**: The last 50 messages are kept in the scrollback buffer
+- **Connection Status**: A green/red indicator shows whether the UDP socket is bound
 
 ---
 
