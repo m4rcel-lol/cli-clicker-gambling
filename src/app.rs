@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
 pub const ASCENSION_THRESHOLD: f64 = 1_000_000.0;
-pub const MAX_LOG_ENTRIES: usize = 5;
+pub const MAX_LOG_ENTRIES: usize = 8;
 
 // ─── Upgrades ────────────────────────────────────────────────────────────────
 
@@ -45,7 +45,7 @@ pub struct GameState {
     pub total_baked: f64,
     /// Heavenly chips from previous ascensions.
     pub heavenly_chips: u32,
-    /// The four buildings.
+    /// The eight buildings.
     pub buildings: Vec<Building>,
     /// All purchasable upgrades.
     pub upgrades: Vec<Upgrade>,
@@ -77,6 +77,22 @@ pub struct GameState {
     #[serde(skip)]
     pub golden_spawn_cooldown: u32,
 
+    // ── Frenzy ──────────────────────────────────────────────────────────────
+    /// Ticks remaining in frenzy mode (0 = not active).
+    #[serde(skip)]
+    pub frenzy_ticks: u32,
+    /// CPS multiplier during frenzy (default 1.0).
+    #[serde(skip, default = "default_frenzy_multiplier")]
+    pub frenzy_multiplier: f64,
+
+    // ── Animation ────────────────────────────────────────────────────────
+    /// Monotonically increasing tick counter for UI animations.
+    #[serde(skip)]
+    pub animation_tick: u32,
+    /// Counts down after each click for visual feedback.
+    #[serde(skip)]
+    pub click_animation: u32,
+
     // ── UI state ───────────────────────────────────────────────────────────
     /// Active tab in the main view: 1 = Buildings, 2 = Upgrades.
     #[serde(skip, default = "default_active_tab")]
@@ -85,6 +101,10 @@ pub struct GameState {
 
 fn default_active_tab() -> u8 {
     1
+}
+
+fn default_frenzy_multiplier() -> f64 {
+    1.0
 }
 
 impl Default for GameState {
@@ -105,6 +125,10 @@ impl Default for GameState {
             golden_collect_window: 0,
             golden_cookie_bonus: 0.0,
             golden_spawn_cooldown: 100, // first golden cookie after ~25 s
+            frenzy_ticks: 0,
+            frenzy_multiplier: 1.0,
+            animation_tick: 0,
+            click_animation: 0,
             active_tab: 1,
         }
     }
@@ -134,7 +158,7 @@ impl GameState {
             .enumerate()
             .map(|(i, b)| b.base_cps * b.owned as f64 * self.building_cps_multiplier(i))
             .sum();
-        raw * self.heavenly_multiplier()
+        raw * self.heavenly_multiplier() * self.frenzy_multiplier
     }
 
     /// Cookies earned per manual click: 1 + 0.5 per owned Cursor.
@@ -152,6 +176,19 @@ impl GameState {
         self.ascend_available = self.total_baked >= ASCENSION_THRESHOLD;
 
         self.ticks_since_save += 1;
+        self.animation_tick = self.animation_tick.wrapping_add(1);
+        if self.click_animation > 0 {
+            self.click_animation -= 1;
+        }
+
+        // ── Frenzy countdown ─────────────────────────────────────────────
+        if self.frenzy_ticks > 0 {
+            self.frenzy_ticks -= 1;
+            if self.frenzy_ticks == 0 {
+                self.frenzy_multiplier = 1.0;
+                self.push_log("🔥 Frenzy ended!".to_string());
+            }
+        }
 
         // ── Golden Cookie logic ──────────────────────────────────────────
         if self.golden_collect_window > 0 {
@@ -164,8 +201,14 @@ impl GameState {
         } else if self.golden_spawn_cooldown > 0 {
             self.golden_spawn_cooldown -= 1;
         } else {
-            // Spawn a new golden cookie
-            self.golden_cookie_bonus = (500.0 + self.cookies * 0.05).max(500.0);
+            // Spawn a new golden cookie – randomly choose effect
+            if rng.gen_bool(0.5) {
+                // Bonus cookies
+                self.golden_cookie_bonus = (500.0 + self.cookies * 0.05).max(500.0);
+            } else {
+                // Frenzy mode (signalled by negative bonus)
+                self.golden_cookie_bonus = -1.0;
+            }
             self.golden_collect_window = 60; // 15-second window
             self.push_log("✨ A Golden Cookie appeared! Press [C] to collect!".to_string());
             // The next cooldown will be set when this one expires or is collected
@@ -178,6 +221,7 @@ impl GameState {
         self.cookies += power;
         self.total_baked += power;
         self.total_clicks += 1;
+        self.click_animation = 3;
         self.ascend_available = self.total_baked >= ASCENSION_THRESHOLD;
     }
 
@@ -231,11 +275,20 @@ impl GameState {
     /// Collect the active golden cookie, if any.  Returns true if collected.
     pub fn collect_golden_cookie(&mut self) -> bool {
         if self.golden_collect_window > 0 {
-            let bonus = self.golden_cookie_bonus;
-            self.add_cookies(bonus);
             self.golden_collect_window = 0;
             self.golden_spawn_cooldown = 400; // 100 s until next
-            self.push_log(format!("✨ Golden Cookie collected! +{:.0} cookies!", bonus));
+
+            if self.golden_cookie_bonus > 0.0 {
+                // Bonus cookies
+                let bonus = self.golden_cookie_bonus;
+                self.add_cookies(bonus);
+                self.push_log(format!("✨ Golden Cookie collected! +{:.0} cookies!", bonus));
+            } else {
+                // Frenzy mode: 7x CPS for 120 ticks (30 seconds at 250ms/tick)
+                self.frenzy_multiplier = 7.0;
+                self.frenzy_ticks = 120;
+                self.push_log("🔥 Frenzy activated! 7x CPS for 30 seconds!".to_string());
+            }
             true
         } else {
             false
@@ -264,6 +317,8 @@ impl GameState {
         self.cps_remainder = 0.0;
         self.golden_collect_window = 0;
         self.golden_spawn_cooldown = 100;
+        self.frenzy_ticks = 0;
+        self.frenzy_multiplier = 1.0;
         self.push_log(msg);
     }
 
@@ -317,6 +372,30 @@ fn default_buildings() -> Vec<Building> {
             name: "Mine".to_string(),
             base_cost: 12_000.0,
             base_cps: 47.0,
+            owned: 0,
+        },
+        Building {
+            name: "Factory".to_string(),
+            base_cost: 130_000.0,
+            base_cps: 260.0,
+            owned: 0,
+        },
+        Building {
+            name: "Bank".to_string(),
+            base_cost: 1_400_000.0,
+            base_cps: 1_400.0,
+            owned: 0,
+        },
+        Building {
+            name: "Temple".to_string(),
+            base_cost: 20_000_000.0,
+            base_cps: 7_800.0,
+            owned: 0,
+        },
+        Building {
+            name: "Wizard Tower".to_string(),
+            base_cost: 330_000_000.0,
+            base_cps: 44_000.0,
             owned: 0,
         },
     ]
@@ -390,6 +469,74 @@ fn default_upgrades() -> Vec<Upgrade> {
             cost: 1_300_000.0,
             purchased: false,
             building_index: 3,
+            multiplier: 2.0,
+        },
+        // ── Factory upgrades (building_index = 4) ─────────────────────────
+        Upgrade {
+            name: "Assembly Line".to_string(),
+            description: "Factories produce 2x more cookies.".to_string(),
+            cost: 1_300_000.0,
+            purchased: false,
+            building_index: 4,
+            multiplier: 2.0,
+        },
+        Upgrade {
+            name: "Mass Production".to_string(),
+            description: "Factories produce 2x more cookies (stacks).".to_string(),
+            cost: 13_000_000.0,
+            purchased: false,
+            building_index: 4,
+            multiplier: 2.0,
+        },
+        // ── Bank upgrades (building_index = 5) ────────────────────────────
+        Upgrade {
+            name: "Investment Portfolio".to_string(),
+            description: "Banks generate 2x more cookies.".to_string(),
+            cost: 14_000_000.0,
+            purchased: false,
+            building_index: 5,
+            multiplier: 2.0,
+        },
+        Upgrade {
+            name: "Compound Interest".to_string(),
+            description: "Banks generate 2x more cookies (stacks).".to_string(),
+            cost: 140_000_000.0,
+            purchased: false,
+            building_index: 5,
+            multiplier: 2.0,
+        },
+        // ── Temple upgrades (building_index = 6) ──────────────────────────
+        Upgrade {
+            name: "Divine Blessing".to_string(),
+            description: "Temples produce 2x more cookies.".to_string(),
+            cost: 200_000_000.0,
+            purchased: false,
+            building_index: 6,
+            multiplier: 2.0,
+        },
+        Upgrade {
+            name: "Sacred Ritual".to_string(),
+            description: "Temples produce 2x more cookies (stacks).".to_string(),
+            cost: 2_000_000_000.0,
+            purchased: false,
+            building_index: 6,
+            multiplier: 2.0,
+        },
+        // ── Wizard Tower upgrades (building_index = 7) ────────────────────
+        Upgrade {
+            name: "Arcane Enchant".to_string(),
+            description: "Wizard Towers produce 2x more cookies.".to_string(),
+            cost: 3_300_000_000.0,
+            purchased: false,
+            building_index: 7,
+            multiplier: 2.0,
+        },
+        Upgrade {
+            name: "Conjure Cookies".to_string(),
+            description: "Wizard Towers produce 2x more cookies (stacks).".to_string(),
+            cost: 33_000_000_000.0,
+            purchased: false,
+            building_index: 7,
             multiplier: 2.0,
         },
     ]
@@ -590,5 +737,46 @@ mod tests {
         gs.golden_collect_window = 0;
         let result = gs.collect_golden_cookie();
         assert!(!result);
+    }
+
+    #[test]
+    fn test_new_buildings_exist() {
+        let gs = GameState::default();
+        assert_eq!(gs.buildings.len(), 8);
+        assert_eq!(gs.buildings[4].name, "Factory");
+        assert_eq!(gs.buildings[5].name, "Bank");
+        assert_eq!(gs.buildings[6].name, "Temple");
+        assert_eq!(gs.buildings[7].name, "Wizard Tower");
+    }
+
+    #[test]
+    fn test_new_upgrades_exist() {
+        let gs = GameState::default();
+        assert_eq!(gs.upgrades.len(), 16);
+        assert_eq!(gs.upgrades[8].name, "Assembly Line");
+        assert_eq!(gs.upgrades[9].name, "Mass Production");
+        assert_eq!(gs.upgrades[10].name, "Investment Portfolio");
+        assert_eq!(gs.upgrades[11].name, "Compound Interest");
+        assert_eq!(gs.upgrades[12].name, "Divine Blessing");
+        assert_eq!(gs.upgrades[13].name, "Sacred Ritual");
+        assert_eq!(gs.upgrades[14].name, "Arcane Enchant");
+        assert_eq!(gs.upgrades[15].name, "Conjure Cookies");
+    }
+
+    #[test]
+    fn test_frenzy_multiplier() {
+        let mut gs = GameState::default();
+        gs.buildings[1].owned = 10; // 10 Grandmas = 10.0 raw CPS
+        let normal_cps = gs.total_cps();
+        gs.frenzy_multiplier = 7.0;
+        gs.frenzy_ticks = 120;
+        let frenzy_cps = gs.total_cps();
+        assert!((frenzy_cps - normal_cps * 7.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_factory_building_cost() {
+        let gs = GameState::default();
+        assert!((gs.buildings[4].next_cost() - 130_000.0).abs() < 0.001);
     }
 }
