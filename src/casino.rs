@@ -66,7 +66,7 @@ pub struct DiceResult {
     pub net: f64,
 }
 
-/// Tracks the casino UI state (active game, pending bets, last results).
+/// Tracks the casino UI state (active game, pending bets, last results, lifetime stats).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CasinoState {
     /// Which casino game is currently active (None = menu).
@@ -85,6 +85,14 @@ pub struct CasinoState {
     pub entering_wager: bool,
     /// Whether we are in "entering dice guess" mode.
     pub entering_dice_guess: bool,
+
+    // ── Lifetime stats ────────────────────────────────────────────────────
+    /// Total number of slot spins ever made.
+    pub total_spins: u32,
+    /// Total cookies wagered across all casino games.
+    pub total_wagered: f64,
+    /// Total gross cookies won back (including returned bets on wins).
+    pub total_won: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -101,6 +109,9 @@ impl CasinoState {
         let gross = slot_payout(&reels);
         let net = gross - SLOT_BET;
         self.last_slot = Some(SlotResult { reels, payout: net });
+        self.total_spins += 1;
+        self.total_wagered += SLOT_BET;
+        self.total_won += gross;
         gross
     }
 
@@ -109,6 +120,10 @@ impl CasinoState {
         let won: bool = rng.gen();
         let net = if won { wager } else { -wager };
         self.last_coin = Some(CoinFlipResult { won, net });
+        self.total_wagered += wager;
+        if won {
+            self.total_won += wager * 2.0;
+        }
         net
     }
 
@@ -123,7 +138,16 @@ impl CasinoState {
             won,
             net,
         });
+        self.total_wagered += wager;
+        if won {
+            self.total_won += wager * 5.0;
+        }
         net
+    }
+
+    /// Net profit/loss across all casino games.
+    pub fn net_profit(&self) -> f64 {
+        self.total_won - self.total_wagered
     }
 
     /// Parse the wager input buffer to an f64. Returns None on empty/invalid.
