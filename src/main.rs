@@ -184,7 +184,7 @@ fn handle_input(
             let idx = (c as u8 - b'1') as usize;
             if game.active_tab == 2 {
                 // Buy upgrade: keys 1-8 map to upgrades on the current page
-                let upgrade_idx = (game.upgrade_page as usize) * 8 + idx;
+                let upgrade_idx = (game.upgrade_page as usize) * app::UPGRADES_PER_PAGE + idx;
                 if upgrade_idx < game.upgrades.len() {
                     if !game.buy_upgrade(upgrade_idx) {
                         let name = game.upgrades[upgrade_idx].name.clone();
@@ -200,7 +200,7 @@ fn handle_input(
         }
         KeyCode::Char('n') | KeyCode::Char('N') if game.active_tab == 2 => {
             // Next page of upgrades
-            let max_page = (game.upgrades.len().saturating_sub(1)) / 8;
+            let max_page = (game.upgrades.len().saturating_sub(1)) / app::UPGRADES_PER_PAGE;
             if (game.upgrade_page as usize) < max_page {
                 game.upgrade_page += 1;
             }

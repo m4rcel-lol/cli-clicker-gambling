@@ -6,7 +6,7 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
 };
 
-use crate::app::{GameState, ASCENSION_THRESHOLD};
+use crate::app::{GameState, ASCENSION_THRESHOLD, UPGRADES_PER_PAGE};
 use crate::casino::{CasinoGame, CasinoState};
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -46,7 +46,6 @@ const BUILDING_ICONS: [&str; 8] = [
 ];
 
 const CLOSE_TO_AFFORD_RATIO: f64 = 0.5;
-const UPGRADES_PER_PAGE: usize = 8;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  Public entry point
@@ -433,10 +432,6 @@ fn render_buildings(frame: &mut Frame, area: Rect, game: &GameState) {
 // ─── Upgrades panel ──────────────────────────────────────────────────────────
 
 fn render_upgrades(frame: &mut Frame, area: Rect, game: &GameState) {
-    let building_names = [
-        "Cursor", "Grandma", "Farm", "Mine", "Factory", "Bank", "Temple", "Wizard",
-    ];
-
     let page = game.upgrade_page as usize;
     let start = page * UPGRADES_PER_PAGE;
     let end = (start + UPGRADES_PER_PAGE).min(game.upgrades.len());
@@ -448,9 +443,10 @@ fn render_upgrades(frame: &mut Frame, area: Rect, game: &GameState) {
         .map(|(i, u)| {
             let display_key = i + 1;
             let cost_str = format_number(u.cost);
-            let bname = building_names
+            let bname = game
+                .buildings
                 .get(u.building_index)
-                .copied()
+                .map(|b| b.name.as_str())
                 .unwrap_or("?");
 
             let (status_tag, status_color) = if u.purchased {

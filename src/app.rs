@@ -4,6 +4,10 @@ use std::collections::VecDeque;
 
 pub const ASCENSION_THRESHOLD: f64 = 1_000_000.0;
 pub const MAX_LOG_ENTRIES: usize = 8;
+/// Number of upgrades shown per page in the UI.
+pub const UPGRADES_PER_PAGE: usize = 8;
+/// Probability that a golden cookie grants Frenzy mode instead of bonus cookies.
+pub const GOLDEN_FRENZY_PROBABILITY: f64 = 0.5;
 
 // ─── Upgrades ────────────────────────────────────────────────────────────────
 
@@ -206,7 +210,7 @@ impl GameState {
             self.golden_spawn_cooldown -= 1;
         } else {
             // Spawn a new golden cookie – randomly choose effect
-            if rng.gen_bool(0.5) {
+            if rng.gen_bool(GOLDEN_FRENZY_PROBABILITY) {
                 // Bonus cookies
                 self.golden_cookie_bonus = (500.0 + self.cookies * 0.05).max(500.0);
             } else {
