@@ -8,6 +8,7 @@ use ratatui::{
 
 use crate::app::{GameState, ASCENSION_THRESHOLD, UPGRADES_PER_PAGE};
 use crate::casino::{CasinoGame, CasinoState};
+use crate::chat::ChatState;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  btop-inspired colour palette
@@ -52,9 +53,11 @@ const CLOSE_TO_AFFORD_RATIO: f64 = 0.5;
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /// Top-level render entry point.
-pub fn render(frame: &mut Frame, game: &GameState, casino: &CasinoState) {
+pub fn render(frame: &mut Frame, game: &GameState, casino: &CasinoState, chat: &ChatState) {
     let area = frame.area();
-    if game.casino_open {
+    if chat.chat_open {
+        render_chat(frame, area, chat);
+    } else if game.casino_open {
         render_casino(frame, area, game, casino);
     } else {
         render_main(frame, area, game);
@@ -608,6 +611,11 @@ fn render_hotkeys(frame: &mut Frame, area: Rect, game: &GameState) {
         Span::styled("Q", Style::default().fg(RED_BRIGHT).add_modifier(Modifier::BOLD)),
         Span::styled("] ", Style::default().fg(GRAY_DIM)),
         Span::styled("Quit", Style::default().fg(GRAY_LIGHT)),
+        Span::styled(" \u{2502} ", Style::default().fg(GRAY_DIM)),
+        Span::styled("[", Style::default().fg(GRAY_DIM)),
+        Span::styled("/", Style::default().fg(NEON_GREEN).add_modifier(Modifier::BOLD)),
+        Span::styled("] ", Style::default().fg(GRAY_DIM)),
+        Span::styled("Chat", Style::default().fg(GRAY_LIGHT)),
     ];
 
     if game.golden_collect_window > 0 {
@@ -663,6 +671,8 @@ fn render_casino(frame: &mut Frame, area: Rect, game: &GameState, casino: &Casin
         Some(CasinoGame::SlotMachine) => render_slots(frame, area, game, casino),
         Some(CasinoGame::CoinFlip) => render_coinflip(frame, area, game, casino),
         Some(CasinoGame::DiceWager) => render_dice(frame, area, game, casino),
+        Some(CasinoGame::Roulette) => render_roulette(frame, area, game, casino),
+        Some(CasinoGame::Blackjack) => render_blackjack(frame, area, game, casino),
     }
 }
 
@@ -763,6 +773,32 @@ fn render_casino_menu(frame: &mut Frame, area: Rect, game: &GameState, casino: &
             ),
             Span::styled("  Guess 1-6, win 5x", Style::default().fg(GRAY_MID)),
         ]),
+        Line::from(vec![
+            Span::styled(
+                "  [R] ",
+                Style::default()
+                    .fg(NEON_GREEN)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "🎡 Roulette     ",
+                Style::default().fg(GREEN_MID),
+            ),
+            Span::styled("  Red/Black/Green/Odd/Even/Hi/Lo", Style::default().fg(GRAY_MID)),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "  [B] ",
+                Style::default()
+                    .fg(GOLD)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "🃏 Blackjack    ",
+                Style::default().fg(GOLD_DIM),
+            ),
+            Span::styled("  Hit 21 to win, beat the dealer", Style::default().fg(GRAY_MID)),
+        ]),
         Line::from(""),
     ];
 
@@ -815,6 +851,8 @@ fn render_casino_menu(frame: &mut Frame, area: Rect, game: &GameState, casino: &
             ("S", "Slots", NEON_GREEN),
             ("F", "Flip", CYAN_BRIGHT),
             ("D", "Dice", MAGENTA_BRIGHT),
+            ("R", "Roulette", GREEN_MID),
+            ("B", "Blackjack", GOLD),
             ("G", "Exit", ORANGE),
             ("Q", "Quit", RED_BRIGHT),
         ],
@@ -1228,6 +1266,478 @@ fn render_dice(frame: &mut Frame, area: Rect, game: &GameState, casino: &CasinoS
         ]
     };
     render_casino_hotkeys(frame, rows[1], step_keys);
+}
+
+// ─── Roulette ────────────────────────────────────────────────────────────────
+
+fn render_roulette(frame: &mut Frame, area: Rect, game: &GameState, casino: &CasinoState) {
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(10), Constraint::Length(3)])
+        .split(area);
+
+    let wager_display = if casino.wager_input.is_empty() {
+        "enter wager...".to_string()
+    } else {
+        casino.wager_input.clone()
+    };
+
+    let mut lines = vec![
+        Line::from(Span::styled(
+            " 🎡  R O U L E T T E",
+            Style::default()
+                .fg(GREEN_BRIGHT)
+                .add_modifier(Modifier::BOLD),
+        )),
+        casino_balance_line(game),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(" Wager: ", Style::default().fg(CYAN_MID)),
+            Span::styled(
+                &wager_display,
+                Style::default().fg(GOLD).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("  (min {})", crate::casino::ROULETTE_MIN_BET as u64),
+                Style::default().fg(GRAY_DIM),
+            ),
+        ]),
+        Line::from(""),
+    ];
+
+    if casino.entering_wager {
+        lines.push(Line::from(Span::styled(
+            " Enter wager, then press Enter to confirm.",
+            Style::default().fg(CYAN_MID),
+        )));
+    } else {
+        lines.push(Line::from(Span::styled(
+            " Choose your bet:",
+            Style::default().fg(GRAY_LIGHT),
+        )));
+        lines.push(Line::from(vec![
+            Span::styled("   [R] ", Style::default().fg(RED_BRIGHT).add_modifier(Modifier::BOLD)),
+            Span::styled("Red (2x)   ", Style::default().fg(RED_BRIGHT)),
+            Span::styled("   [B] ", Style::default().fg(WHITE).add_modifier(Modifier::BOLD)),
+            Span::styled("Black (2x)", Style::default().fg(WHITE)),
+            Span::styled("   [Z] ", Style::default().fg(GREEN_BRIGHT).add_modifier(Modifier::BOLD)),
+            Span::styled("Green/0 (14x)", Style::default().fg(GREEN_BRIGHT)),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("   [O] ", Style::default().fg(CYAN_MID).add_modifier(Modifier::BOLD)),
+            Span::styled("Odd (2x)   ", Style::default().fg(CYAN_MID)),
+            Span::styled("   [E] ", Style::default().fg(CYAN_MID).add_modifier(Modifier::BOLD)),
+            Span::styled("Even (2x) ", Style::default().fg(CYAN_MID)),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("   [L] ", Style::default().fg(ORANGE).add_modifier(Modifier::BOLD)),
+            Span::styled("Low 1-18 (2x) ", Style::default().fg(ORANGE)),
+            Span::styled("[H] ", Style::default().fg(ORANGE).add_modifier(Modifier::BOLD)),
+            Span::styled("High 19-36 (2x)", Style::default().fg(ORANGE)),
+        ]));
+    }
+    lines.push(Line::from(""));
+
+    if let Some(ref result) = casino.last_roulette {
+        let color_label = match result.color {
+            crate::casino::RouletteColor::Red => ("🔴", RED_BRIGHT),
+            crate::casino::RouletteColor::Black => ("⚫", WHITE),
+            crate::casino::RouletteColor::Green => ("🟢", GREEN_BRIGHT),
+        };
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!(" Landed on: {} {} ", color_label.0, result.number),
+                Style::default().fg(color_label.1).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("(Bet: {})", result.bet_type.label()),
+                Style::default().fg(GRAY_MID),
+            ),
+        ]));
+
+        if result.won {
+            lines.push(Line::from(Span::styled(
+                format!(" 🎉 You won! +{:.0} cookies!", result.net),
+                Style::default().fg(GREEN_BRIGHT).add_modifier(Modifier::BOLD),
+            )));
+        } else {
+            lines.push(Line::from(Span::styled(
+                format!(" 💸 Lost {:.0} cookies.", result.wager),
+                Style::default().fg(RED_BRIGHT),
+            )));
+        }
+    }
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(GREEN_MID))
+        .title(Span::styled(
+            "╣ 🎡 Roulette ╠",
+            Style::default()
+                .fg(GREEN_BRIGHT)
+                .add_modifier(Modifier::BOLD),
+        ));
+    let paragraph = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false });
+    frame.render_widget(paragraph, rows[0]);
+
+    let hotkeys: &[(&str, &str, Color)] = if casino.entering_wager {
+        &[
+            ("0-9", "Wager", CYAN_BRIGHT),
+            ("\u{21b5}", "Confirm", NEON_GREEN),
+            ("\u{232b}", "Erase", GRAY_LIGHT),
+            ("G", "Menu", ORANGE),
+        ]
+    } else {
+        &[
+            ("R", "Red", RED_BRIGHT),
+            ("B", "Black", WHITE),
+            ("Z", "Zero", GREEN_BRIGHT),
+            ("O", "Odd", CYAN_MID),
+            ("E", "Even", CYAN_MID),
+            ("G", "Menu", ORANGE),
+        ]
+    };
+    render_casino_hotkeys(frame, rows[1], hotkeys);
+}
+
+// ─── Blackjack ───────────────────────────────────────────────────────────────
+
+fn render_blackjack(frame: &mut Frame, area: Rect, game: &GameState, casino: &CasinoState) {
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(10), Constraint::Length(3)])
+        .split(area);
+
+    let mut lines = vec![
+        Line::from(Span::styled(
+            " 🃏  B L A C K J A C K",
+            Style::default()
+                .fg(GOLD)
+                .add_modifier(Modifier::BOLD),
+        )),
+        casino_balance_line(game),
+        Line::from(""),
+    ];
+
+    if let Some(ref hand) = casino.blackjack_hand {
+        let wager_str = format_number(hand.wager);
+        lines.push(Line::from(vec![
+            Span::styled(" Wager: ", Style::default().fg(CYAN_MID)),
+            Span::styled(
+                format!("{} cookies", wager_str),
+                Style::default().fg(GOLD).add_modifier(Modifier::BOLD),
+            ),
+        ]));
+        lines.push(Line::from(""));
+
+        // Dealer's hand
+        let dealer_display: String = if hand.phase == crate::casino::BlackjackPhase::PlayerTurn {
+            if hand.dealer_cards.is_empty() {
+                "?".to_string()
+            } else {
+                format!("{} [?]", hand.dealer_cards[0].display())
+            }
+        } else {
+            hand.dealer_cards
+                .iter()
+                .map(|c| c.display())
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+
+        let dealer_score = if hand.phase == crate::casino::BlackjackPhase::PlayerTurn {
+            "?".to_string()
+        } else {
+            crate::casino::hand_value(&hand.dealer_cards).to_string()
+        };
+
+        lines.push(Line::from(vec![
+            Span::styled(" Dealer: ", Style::default().fg(RED_BRIGHT)),
+            Span::styled(
+                dealer_display,
+                Style::default().fg(WHITE).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(format!("  ({})", dealer_score), Style::default().fg(GRAY_MID)),
+        ]));
+
+        // Player's hand
+        let player_display: String = hand
+            .player_cards
+            .iter()
+            .map(|c| c.display())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let player_val = crate::casino::hand_value(&hand.player_cards);
+
+        let val_color = if player_val > 21 {
+            RED_BRIGHT
+        } else if player_val == 21 {
+            GREEN_BRIGHT
+        } else {
+            WHITE
+        };
+
+        lines.push(Line::from(vec![
+            Span::styled(" You:    ", Style::default().fg(CYAN_BRIGHT)),
+            Span::styled(
+                player_display,
+                Style::default().fg(WHITE).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("  ({})", player_val),
+                Style::default().fg(val_color),
+            ),
+        ]));
+        lines.push(Line::from(""));
+
+        // Show outcome if resolved
+        if hand.phase == crate::casino::BlackjackPhase::Resolved {
+            if let Some(ref result) = casino.last_blackjack {
+                let (msg, color) = match result.outcome {
+                    crate::casino::BlackjackOutcome::PlayerBlackjack => {
+                        (format!("🎉 BLACKJACK! +{:.0} cookies!", result.net), GREEN_BRIGHT)
+                    }
+                    crate::casino::BlackjackOutcome::PlayerWin => {
+                        (format!("🎉 You win! +{:.0} cookies!", result.net), GREEN_BRIGHT)
+                    }
+                    crate::casino::BlackjackOutcome::DealerBust => {
+                        (format!("🎉 Dealer busts! +{:.0} cookies!", result.net), GREEN_BRIGHT)
+                    }
+                    crate::casino::BlackjackOutcome::Push => {
+                        ("🤝 Push! Bet returned.".to_string(), GOLD)
+                    }
+                    crate::casino::BlackjackOutcome::PlayerBust => {
+                        (format!("💥 BUST! Lost {:.0} cookies.", result.wager), RED_BRIGHT)
+                    }
+                    crate::casino::BlackjackOutcome::DealerWin => {
+                        (format!("😞 Dealer wins. Lost {:.0} cookies.", result.wager), RED_BRIGHT)
+                    }
+                };
+                lines.push(Line::from(Span::styled(
+                    format!(" {}", msg),
+                    Style::default().fg(color).add_modifier(Modifier::BOLD),
+                )));
+                lines.push(Line::from(""));
+                lines.push(Line::from(Span::styled(
+                    " Press [N] for a new hand.",
+                    Style::default().fg(GRAY_LIGHT),
+                )));
+            }
+        } else if hand.phase == crate::casino::BlackjackPhase::PlayerTurn {
+            lines.push(Line::from(Span::styled(
+                " [H]it or [S]tand?",
+                Style::default().fg(CYAN_BRIGHT).add_modifier(Modifier::BOLD),
+            )));
+        }
+    } else {
+        // No hand: show betting UI
+        let wager_display = if casino.wager_input.is_empty() {
+            "enter wager...".to_string()
+        } else {
+            casino.wager_input.clone()
+        };
+        lines.push(Line::from(vec![
+            Span::styled(" Wager: ", Style::default().fg(CYAN_MID)),
+            Span::styled(
+                wager_display,
+                Style::default().fg(GOLD).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("  (min {})", crate::casino::BLACKJACK_MIN_BET as u64),
+                Style::default().fg(GRAY_DIM),
+            ),
+        ]));
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            " Enter wager and press Enter to deal.",
+            Style::default().fg(GRAY_LIGHT),
+        )));
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            " Rules: Beat dealer without going over 21.",
+            Style::default().fg(GRAY_MID),
+        )));
+        lines.push(Line::from(Span::styled(
+            " Blackjack (21 with 2 cards) pays 2.5x. Win pays 2x.",
+            Style::default().fg(GRAY_MID),
+        )));
+        lines.push(Line::from(Span::styled(
+            " Dealer stands on 17+. Ace = 1 or 11.",
+            Style::default().fg(GRAY_MID),
+        )));
+    }
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(GOLD_DIM))
+        .title(Span::styled(
+            "╣ 🃏 Blackjack ╠",
+            Style::default()
+                .fg(GOLD)
+                .add_modifier(Modifier::BOLD),
+        ));
+    let paragraph = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false });
+    frame.render_widget(paragraph, rows[0]);
+
+    let phase = casino
+        .blackjack_hand
+        .as_ref()
+        .map(|h| h.phase)
+        .unwrap_or(crate::casino::BlackjackPhase::Betting);
+
+    let hotkeys: &[(&str, &str, Color)] = match phase {
+        crate::casino::BlackjackPhase::PlayerTurn => &[
+            ("H", "Hit", NEON_GREEN),
+            ("S", "Stand", ORANGE),
+        ],
+        crate::casino::BlackjackPhase::Resolved => &[
+            ("N", "New Hand", CYAN_BRIGHT),
+            ("G", "Menu", ORANGE),
+            ("Q", "Quit", RED_BRIGHT),
+        ],
+        _ => &[
+            ("0-9", "Wager", CYAN_BRIGHT),
+            ("\u{21b5}", "Deal", NEON_GREEN),
+            ("\u{232b}", "Erase", GRAY_LIGHT),
+            ("G", "Menu", ORANGE),
+        ],
+    };
+    render_casino_hotkeys(frame, rows[1], hotkeys);
+}
+
+// ─── Chat view ───────────────────────────────────────────────────────────────
+
+fn render_chat(frame: &mut Frame, area: Rect, chat: &ChatState) {
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),  // Header
+            Constraint::Min(10),   // Messages
+            Constraint::Length(3), // Input
+            Constraint::Length(3), // Hotkeys
+        ])
+        .split(area);
+
+    // Header
+    let status = if chat.is_connected() {
+        Span::styled(" 🟢 Connected", Style::default().fg(GREEN_BRIGHT))
+    } else {
+        Span::styled(" 🔴 Offline", Style::default().fg(RED_BRIGHT))
+    };
+    let header_lines = vec![Line::from(vec![
+        Span::styled(
+            " 💬 Global Chat  ",
+            Style::default().fg(CYAN_BRIGHT).add_modifier(Modifier::BOLD),
+        ),
+        status,
+        Span::styled(
+            format!("  │  {} ", chat.identity),
+            Style::default().fg(GRAY_MID),
+        ),
+        Span::styled(
+            format!("  │  {} users known", chat.known_users.len()),
+            Style::default().fg(GRAY_DIM),
+        ),
+    ])];
+    let header_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(CYAN_DIM))
+        .title(Span::styled(
+            "╣ Chat ╠",
+            Style::default().fg(CYAN_BRIGHT).add_modifier(Modifier::BOLD),
+        ));
+    let header = Paragraph::new(header_lines)
+        .block(header_block)
+        .wrap(Wrap { trim: false });
+    frame.render_widget(header, rows[0]);
+
+    // Messages
+    let msg_items: Vec<ListItem> = chat
+        .messages
+        .iter()
+        .map(|msg| {
+            let is_self = msg.sender == chat.identity;
+            let is_pinged = ChatState::is_user_pinged(&msg.content, &chat.identity);
+
+            let sender_color = if is_self { CYAN_BRIGHT } else { NEON_GREEN };
+            let content_color = if is_pinged {
+                GOLD
+            } else if is_self {
+                WHITE
+            } else {
+                GRAY_LIGHT
+            };
+
+            let ping_marker = if is_pinged { " 🔔" } else { "" };
+
+            ListItem::new(Line::from(vec![
+                Span::styled(
+                    format!(" {}: ", msg.sender),
+                    Style::default().fg(sender_color).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    &msg.content,
+                    Style::default().fg(content_color),
+                ),
+                Span::styled(
+                    ping_marker.to_string(),
+                    Style::default().fg(GOLD),
+                ),
+            ]))
+        })
+        .collect();
+
+    let msg_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(GRAY_DIM))
+        .title(Span::styled(
+            "╣ Messages ╠",
+            Style::default().fg(GRAY_LIGHT),
+        ));
+    let msg_list = List::new(msg_items).block(msg_block);
+    frame.render_widget(msg_list, rows[1]);
+
+    // Input box
+    let input_display = if chat.input_buffer.is_empty() {
+        "Type a message... ($ to ping users, Tab to autocomplete)"
+    } else {
+        &chat.input_buffer
+    };
+    let input_color = if chat.input_buffer.is_empty() {
+        GRAY_DIM
+    } else {
+        WHITE
+    };
+    let input_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(CYAN_MID))
+        .title(Span::styled(
+            "╣ Input ╠",
+            Style::default().fg(CYAN_BRIGHT),
+        ));
+    let input = Paragraph::new(Line::from(vec![
+        Span::styled(" > ", Style::default().fg(CYAN_BRIGHT)),
+        Span::styled(input_display, Style::default().fg(input_color)),
+        Span::styled("█", Style::default().fg(CYAN_BRIGHT)), // Cursor
+    ]))
+    .block(input_block);
+    frame.render_widget(input, rows[2]);
+
+    // Hotkeys
+    render_casino_hotkeys(
+        frame,
+        rows[3],
+        &[
+            ("Enter", "Send", NEON_GREEN),
+            ("Tab", "Autocomplete", CYAN_BRIGHT),
+            ("$user", "Ping", GOLD),
+            ("Esc", "Close", RED_BRIGHT),
+        ],
+    );
 }
 
 // ─── Shared casino hotkey bar ────────────────────────────────────────────────
