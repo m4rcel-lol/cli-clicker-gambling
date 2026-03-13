@@ -97,6 +97,9 @@ pub struct GameState {
     /// Active tab in the main view: 1 = Buildings, 2 = Upgrades.
     #[serde(skip, default = "default_active_tab")]
     pub active_tab: u8,
+    /// Current page of upgrades (0-based, 8 upgrades per page).
+    #[serde(skip)]
+    pub upgrade_page: u8,
 }
 
 fn default_active_tab() -> u8 {
@@ -130,6 +133,7 @@ impl Default for GameState {
             animation_tick: 0,
             click_animation: 0,
             active_tab: 1,
+            upgrade_page: 0,
         }
     }
 }

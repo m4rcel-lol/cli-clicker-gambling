@@ -180,60 +180,35 @@ fn handle_input(
             // Toggle between Buildings (1) and Upgrades (2) tab
             game.active_tab = if game.active_tab == 1 { 2 } else { 1 };
         }
-        KeyCode::Char('1') => {
+        KeyCode::Char(c) if c >= '1' && c <= '8' => {
+            let idx = (c as u8 - b'1') as usize;
             if game.active_tab == 2 {
-                if !game.buy_upgrade(0) {
-                    game.push_log("Can't buy Nimble Fingers!".to_string());
+                // Buy upgrade: keys 1-8 map to upgrades on the current page
+                let upgrade_idx = (game.upgrade_page as usize) * 8 + idx;
+                if upgrade_idx < game.upgrades.len() {
+                    if !game.buy_upgrade(upgrade_idx) {
+                        let name = game.upgrades[upgrade_idx].name.clone();
+                        game.push_log(format!("Can't buy {}!", name));
+                    }
                 }
-            } else if !game.buy_building(0) {
-                game.push_log("Not enough cookies for Cursor!".to_string());
-            }
-        }
-        KeyCode::Char('2') => {
-            if game.active_tab == 2 {
-                if !game.buy_upgrade(1) {
-                    game.push_log("Can't buy Cursor Overdrive!".to_string());
+            } else if idx < game.buildings.len() {
+                if !game.buy_building(idx) {
+                    let name = game.buildings[idx].name.clone();
+                    game.push_log(format!("Not enough cookies for {}!", name));
                 }
-            } else if !game.buy_building(1) {
-                game.push_log("Not enough cookies for Grandma!".to_string());
             }
         }
-        KeyCode::Char('3') => {
-            if game.active_tab == 2 {
-                if !game.buy_upgrade(2) {
-                    game.push_log("Can't buy Loving Grandmas!".to_string());
-                }
-            } else if !game.buy_building(2) {
-                game.push_log("Not enough cookies for Farm!".to_string());
+        KeyCode::Char('n') | KeyCode::Char('N') if game.active_tab == 2 => {
+            // Next page of upgrades
+            let max_page = (game.upgrades.len().saturating_sub(1)) / 8;
+            if (game.upgrade_page as usize) < max_page {
+                game.upgrade_page += 1;
             }
         }
-        KeyCode::Char('4') => {
-            if game.active_tab == 2 {
-                if !game.buy_upgrade(3) {
-                    game.push_log("Can't buy Senior Discount!".to_string());
-                }
-            } else if !game.buy_building(3) {
-                game.push_log("Not enough cookies for Mine!".to_string());
-            }
-        }
-        KeyCode::Char('5') if game.active_tab == 2 => {
-            if !game.buy_upgrade(4) {
-                game.push_log("Can't buy Irrigation System!".to_string());
-            }
-        }
-        KeyCode::Char('6') if game.active_tab == 2 => {
-            if !game.buy_upgrade(5) {
-                game.push_log("Can't buy Hydroponics!".to_string());
-            }
-        }
-        KeyCode::Char('7') if game.active_tab == 2 => {
-            if !game.buy_upgrade(6) {
-                game.push_log("Can't buy Deep Excavation!".to_string());
-            }
-        }
-        KeyCode::Char('8') if game.active_tab == 2 => {
-            if !game.buy_upgrade(7) {
-                game.push_log("Can't buy Quantum Drilling!".to_string());
+        KeyCode::Char('p') | KeyCode::Char('P') if game.active_tab == 2 => {
+            // Previous page of upgrades
+            if game.upgrade_page > 0 {
+                game.upgrade_page -= 1;
             }
         }
         KeyCode::Char('g') | KeyCode::Char('G') => {
