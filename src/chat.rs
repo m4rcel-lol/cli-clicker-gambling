@@ -194,6 +194,7 @@ impl ChatState {
     }
 
     /// Check if this message contains a ping for any known user.
+    #[allow(dead_code)]
     pub fn message_contains_ping(content: &str) -> bool {
         content.contains('$')
     }

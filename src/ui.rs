@@ -102,36 +102,44 @@ fn render_stats(frame: &mut Frame, area: Rect, game: &GameState) {
     let cps_fmt = format_number(cps);
     let click_fmt = format!("{:.1}", game.click_power());
 
-    // Cookie ASCII art with animation frames
+    // Cookie ASCII art with animation frames (chocolate chip positions shift)
     let frame_idx = (game.animation_tick / 4) as usize % 4;
-    let cookie_frames: [[&str; 5]; 4] = [
+    let cookie_frames: [[&str; 7]; 4] = [
         [
-            "      ╭──────────╮  ",
-            "     │  (::) 🍪  │ ",
-            "     │  Cookie   │ ",
-            "     │  Clicker  │ ",
-            "      ╰──────────╯  ",
+            r"       _.---._       ",
+            r"     .'  o    '.     ",
+            r"    /  o    o   \    ",
+            r"   |    o     o  |   ",
+            r"    \  o    o   /    ",
+            r"     '._  o  _.'     ",
+            r"        '---'        ",
         ],
         [
-            "       ╭────────╮   ",
-            "      │ (::)🍪  │  ",
-            "      │ Cookie  │  ",
-            "      │ Clicker │  ",
-            "       ╰────────╯   ",
+            r"       _.---._       ",
+            r"     .'    o   '.    ",
+            r"    / o      o   \   ",
+            r"   |   o   o      |  ",
+            r"    \    o     o /   ",
+            r"     '._ o   _.'     ",
+            r"        '---'        ",
         ],
         [
-            "      ╭──────────╮  ",
-            "     │  🍪(::)  │ ",
-            "     │  Cookie   │ ",
-            "     │  Clicker  │ ",
-            "      ╰──────────╯  ",
+            r"       _.---._       ",
+            r"     .'   o    '.    ",
+            r"    /    o   o   \   ",
+            r"   | o      o    |   ",
+            r"    \   o  o    /    ",
+            r"     '._   o _.'     ",
+            r"        '---'        ",
         ],
         [
-            "       ╭────────╮   ",
-            "      │ 🍪(::) │  ",
-            "      │ Cookie  │  ",
-            "      │ Clicker │  ",
-            "       ╰────────╯   ",
+            r"       _.---._       ",
+            r"     .' o      '.   ",
+            r"    /     o  o   \   ",
+            r"   |  o    o     |   ",
+            r"    \ o      o  /    ",
+            r"     '._o    _.'     ",
+            r"        '---'        ",
         ],
     ];
     let cookie_art = &cookie_frames[frame_idx];
@@ -145,7 +153,7 @@ fn render_stats(frame: &mut Frame, area: Rect, game: &GameState) {
     let mut lines: Vec<Line> = vec![
         Line::from(vec![
             Span::styled(
-                " 🍪 COOKIE CLICKER ",
+                " (::) COOKIE CLICKER ",
                 Style::default()
                     .fg(GOLD)
                     .add_modifier(Modifier::BOLD),
@@ -199,10 +207,11 @@ fn render_stats(frame: &mut Frame, area: Rect, game: &GameState) {
 
     // Click animation burst
     if game.click_animation > 0 {
+        let power = format!("+{}", click_fmt);
         let burst = match game.click_animation {
-            3 => " ✦ +1! ✦ ",
-            2 => "  ✧ +1 ✧  ",
-            _ => "   · +1 ·   ",
+            3 => format!(" \u{2726} {}! \u{2726} ", power),
+            2 => format!("  \u{2727} {} \u{2727}  ", power),
+            _ => format!("   \u{00b7} {} \u{00b7}   ", power),
         };
         lines.push(Line::from(Span::styled(
             burst,
@@ -217,7 +226,7 @@ fn render_stats(frame: &mut Frame, area: Rect, game: &GameState) {
     // Prestige progress
     let progress_str = if game.total_baked < ASCENSION_THRESHOLD {
         let pct = (game.total_baked / ASCENSION_THRESHOLD * 100.0).min(100.0);
-        let filled = (pct / 5.0) as usize;
+        let filled = ((pct / 5.0) as usize).min(20);
         let bar: String = "▓".repeat(filled) + &"░".repeat(20 - filled);
         format!(" Prestige [{}] {:.1}%", bar, pct)
     } else {

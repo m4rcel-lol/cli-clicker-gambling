@@ -74,6 +74,15 @@ fn load_game() -> GameState {
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
 fn main() -> io::Result<()> {
+    // Install a panic hook that restores the terminal before printing the panic.
+    // Without this, a panic leaves the terminal in raw mode and alternate screen.
+    let original_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        let _ = disable_raw_mode();
+        let _ = execute!(io::stdout(), LeaveAlternateScreen);
+        original_hook(panic_info);
+    }));
+
     // Terminal setup
     enable_raw_mode()?;
     let mut stdout = io::stdout();

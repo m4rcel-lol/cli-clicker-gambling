@@ -154,6 +154,7 @@ impl Suit {
         }
     }
 
+    #[allow(dead_code)]
     pub fn is_red(&self) -> bool {
         matches!(self, Suit::Hearts | Suit::Diamonds)
     }
