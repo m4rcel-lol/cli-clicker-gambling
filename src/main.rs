@@ -1,5 +1,6 @@
 mod app;
 mod casino;
+mod chat;
 mod ui;
 
 use std::{
@@ -22,6 +23,7 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 
 use app::GameState;
 use casino::{CasinoGame, CasinoState};
+use chat::ChatState;
 
 // ─── Event types sent over the mpsc channel ───────────────────────────────────
 
@@ -72,6 +74,15 @@ fn load_game() -> GameState {
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
 fn main() -> io::Result<()> {
+    // Install a panic hook that restores the terminal before printing the panic.
+    // Without this, a panic leaves the terminal in raw mode and alternate screen.
+    let original_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        let _ = disable_raw_mode();
+        let _ = execute!(io::stdout(), LeaveAlternateScreen);
+        original_hook(panic_info);
+    }));
+
     // Terminal setup
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -98,6 +109,7 @@ fn main() -> io::Result<()> {
 fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> {
     let mut game = load_game();
     let mut casino = CasinoState::default();
+    let mut chat = ChatState::new();
     let mut rng = rand::rngs::SmallRng::from_entropy();
 
     // mpsc channel for events
@@ -125,19 +137,29 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<
 
     loop {
         // Draw
-        terminal.draw(|f| ui::render(f, &game, &casino))?;
+        terminal.draw(|f| ui::render(f, &game, &casino, &chat))?;
 
         // Handle next event
         match rx.recv() {
             Ok(AppEvent::Tick) => {
                 game.tick(0.25, &mut rng); // 250 ms tick
+
+                // Poll for incoming chat messages
+                chat.poll_incoming();
+
+                // Play terminal bell if we got pinged
+                if chat.consume_ping() {
+                    // Send BEL character to trigger desktop notification sound
+                    let _ = execute!(io::stdout(), crossterm::style::Print('\x07'));
+                }
+
                 if game.ticks_since_save >= AUTOSAVE_TICKS {
                     save_game(&game);
                     game.ticks_since_save = 0;
                 }
             }
             Ok(AppEvent::Input(key)) => {
-                if handle_input(key, &mut game, &mut casino, &mut rng) {
+                if handle_input(key, &mut game, &mut casino, &mut chat, &mut rng) {
                     // Quit requested
                     save_game(&game);
                     break;
@@ -157,11 +179,17 @@ fn handle_input(
     key: KeyEvent,
     game: &mut GameState,
     casino: &mut CasinoState,
+    chat: &mut ChatState,
     rng: &mut rand::rngs::SmallRng,
 ) -> bool {
     // Ctrl-C always quits
     if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
         return true;
+    }
+
+    // Chat mode takes priority when open
+    if chat.chat_open {
+        return handle_chat_input(key, chat);
     }
 
     if game.casino_open {
@@ -180,60 +208,35 @@ fn handle_input(
             // Toggle between Buildings (1) and Upgrades (2) tab
             game.active_tab = if game.active_tab == 1 { 2 } else { 1 };
         }
-        KeyCode::Char('1') => {
+        KeyCode::Char(c) if c >= '1' && c <= '8' => {
+            let idx = (c as u8 - b'1') as usize;
             if game.active_tab == 2 {
-                if !game.buy_upgrade(0) {
-                    game.push_log("Can't buy Nimble Fingers!".to_string());
+                // Buy upgrade: keys 1-8 map to upgrades on the current page
+                let upgrade_idx = (game.upgrade_page as usize) * app::UPGRADES_PER_PAGE + idx;
+                if upgrade_idx < game.upgrades.len() {
+                    if !game.buy_upgrade(upgrade_idx) {
+                        let name = game.upgrades[upgrade_idx].name.clone();
+                        game.push_log(format!("Can't buy {}!", name));
+                    }
                 }
-            } else if !game.buy_building(0) {
-                game.push_log("Not enough cookies for Cursor!".to_string());
-            }
-        }
-        KeyCode::Char('2') => {
-            if game.active_tab == 2 {
-                if !game.buy_upgrade(1) {
-                    game.push_log("Can't buy Cursor Overdrive!".to_string());
+            } else if idx < game.buildings.len() {
+                if !game.buy_building(idx) {
+                    let name = game.buildings[idx].name.clone();
+                    game.push_log(format!("Not enough cookies for {}!", name));
                 }
-            } else if !game.buy_building(1) {
-                game.push_log("Not enough cookies for Grandma!".to_string());
             }
         }
-        KeyCode::Char('3') => {
-            if game.active_tab == 2 {
-                if !game.buy_upgrade(2) {
-                    game.push_log("Can't buy Loving Grandmas!".to_string());
-                }
-            } else if !game.buy_building(2) {
-                game.push_log("Not enough cookies for Farm!".to_string());
+        KeyCode::Char('n') | KeyCode::Char('N') if game.active_tab == 2 => {
+            // Next page of upgrades
+            let max_page = (game.upgrades.len().saturating_sub(1)) / app::UPGRADES_PER_PAGE;
+            if (game.upgrade_page as usize) < max_page {
+                game.upgrade_page += 1;
             }
         }
-        KeyCode::Char('4') => {
-            if game.active_tab == 2 {
-                if !game.buy_upgrade(3) {
-                    game.push_log("Can't buy Senior Discount!".to_string());
-                }
-            } else if !game.buy_building(3) {
-                game.push_log("Not enough cookies for Mine!".to_string());
-            }
-        }
-        KeyCode::Char('5') if game.active_tab == 2 => {
-            if !game.buy_upgrade(4) {
-                game.push_log("Can't buy Irrigation System!".to_string());
-            }
-        }
-        KeyCode::Char('6') if game.active_tab == 2 => {
-            if !game.buy_upgrade(5) {
-                game.push_log("Can't buy Hydroponics!".to_string());
-            }
-        }
-        KeyCode::Char('7') if game.active_tab == 2 => {
-            if !game.buy_upgrade(6) {
-                game.push_log("Can't buy Deep Excavation!".to_string());
-            }
-        }
-        KeyCode::Char('8') if game.active_tab == 2 => {
-            if !game.buy_upgrade(7) {
-                game.push_log("Can't buy Quantum Drilling!".to_string());
+        KeyCode::Char('p') | KeyCode::Char('P') if game.active_tab == 2 => {
+            // Previous page of upgrades
+            if game.upgrade_page > 0 {
+                game.upgrade_page -= 1;
             }
         }
         KeyCode::Char('g') | KeyCode::Char('G') => {
@@ -249,10 +252,46 @@ fn handle_input(
                 game.ascend();
             }
         }
+        KeyCode::Char('/') => {
+            // Open chat
+            chat.chat_open = true;
+        }
         _ => {}
     }
     false
 }
+
+// ─── Chat input handler ──────────────────────────────────────────────────────
+
+fn handle_chat_input(key: KeyEvent, chat: &mut ChatState) -> bool {
+    match key.code {
+        KeyCode::Esc => {
+            chat.chat_open = false;
+            chat.reset_tab();
+        }
+        KeyCode::Enter => {
+            chat.send_message();
+        }
+        KeyCode::Tab => {
+            chat.tab_complete();
+            return false; // Don't reset tab state
+        }
+        KeyCode::Backspace => {
+            chat.input_buffer.pop();
+            chat.reset_tab();
+        }
+        KeyCode::Char(c) => {
+            if chat.input_buffer.len() < 500 {
+                chat.input_buffer.push(c);
+            }
+            chat.reset_tab();
+        }
+        _ => {}
+    }
+    false
+}
+
+// ─── Casino input handlers ───────────────────────────────────────────────────
 
 fn handle_casino_input(
     key: KeyEvent,
@@ -265,6 +304,8 @@ fn handle_casino_input(
         Some(CasinoGame::SlotMachine) => handle_slots_input(key, game, casino, rng),
         Some(CasinoGame::CoinFlip) => handle_coinflip_input(key, game, casino, rng),
         Some(CasinoGame::DiceWager) => handle_dice_input(key, game, casino, rng),
+        Some(CasinoGame::Roulette) => handle_roulette_input(key, game, casino, rng),
+        Some(CasinoGame::Blackjack) => handle_blackjack_input(key, game, casino, rng),
     }
 }
 
@@ -295,6 +336,20 @@ fn handle_casino_menu_input(
             casino.entering_wager = true;
             casino.entering_dice_guess = false;
             casino.last_dice = None;
+        }
+        KeyCode::Char('r') | KeyCode::Char('R') => {
+            casino.active_game = Some(CasinoGame::Roulette);
+            casino.wager_input.clear();
+            casino.roulette_bet_type = None;
+            casino.entering_wager = true;
+            casino.last_roulette = None;
+        }
+        KeyCode::Char('b') | KeyCode::Char('B') => {
+            casino.active_game = Some(CasinoGame::Blackjack);
+            casino.wager_input.clear();
+            casino.entering_wager = true;
+            casino.blackjack_hand = None;
+            casino.last_blackjack = None;
         }
         _ => {}
     }
@@ -485,6 +540,230 @@ fn try_dice_roll(
         casino.entering_dice_guess = false;
     } else {
         game.push_log("Not enough cookies for that bet!".to_string());
+    }
+}
+
+// ─── Roulette input handler ──────────────────────────────────────────────────
+
+fn handle_roulette_input(
+    key: KeyEvent,
+    game: &mut GameState,
+    casino: &mut CasinoState,
+    rng: &mut rand::rngs::SmallRng,
+) -> bool {
+    match key.code {
+        KeyCode::Char('q') | KeyCode::Char('Q') => return true,
+        KeyCode::Char('g') | KeyCode::Char('G') => {
+            casino.active_game = None;
+            casino.wager_input.clear();
+            casino.roulette_bet_type = None;
+            casino.entering_wager = false;
+        }
+        KeyCode::Backspace => {
+            if casino.entering_wager {
+                casino.wager_input.pop();
+            }
+        }
+        KeyCode::Char(c) if c.is_ascii_digit() && casino.entering_wager => {
+            if casino.wager_input.len() < 12 {
+                casino.wager_input.push(c);
+            }
+        }
+        KeyCode::Enter if casino.entering_wager => {
+            if casino.parsed_wager().is_some() {
+                casino.entering_wager = false;
+            }
+        }
+        // Bet type selection (after wager confirmed)
+        KeyCode::Char('r') | KeyCode::Char('R') if !casino.entering_wager => {
+            try_roulette_spin(game, casino, rng, casino::RouletteBetType::Red);
+        }
+        KeyCode::Char('b') | KeyCode::Char('B') if !casino.entering_wager => {
+            try_roulette_spin(game, casino, rng, casino::RouletteBetType::Black);
+        }
+        KeyCode::Char('z') | KeyCode::Char('Z') if !casino.entering_wager => {
+            try_roulette_spin(game, casino, rng, casino::RouletteBetType::Green);
+        }
+        KeyCode::Char('o') | KeyCode::Char('O') if !casino.entering_wager => {
+            try_roulette_spin(game, casino, rng, casino::RouletteBetType::Odd);
+        }
+        KeyCode::Char('e') | KeyCode::Char('E') if !casino.entering_wager => {
+            try_roulette_spin(game, casino, rng, casino::RouletteBetType::Even);
+        }
+        KeyCode::Char('l') | KeyCode::Char('L') if !casino.entering_wager => {
+            try_roulette_spin(game, casino, rng, casino::RouletteBetType::Low);
+        }
+        KeyCode::Char('h') | KeyCode::Char('H') if !casino.entering_wager => {
+            try_roulette_spin(game, casino, rng, casino::RouletteBetType::High);
+        }
+        _ => {}
+    }
+    false
+}
+
+fn try_roulette_spin(
+    game: &mut GameState,
+    casino: &mut CasinoState,
+    rng: &mut rand::rngs::SmallRng,
+    bet_type: casino::RouletteBetType,
+) {
+    let wager = match casino.parsed_wager() {
+        Some(w) => w,
+        None => {
+            game.push_log("Enter a valid wager first.".to_string());
+            return;
+        }
+    };
+    if wager < casino::ROULETTE_MIN_BET {
+        game.push_log(format!(
+            "Min roulette bet is {:.0} cookies.",
+            casino::ROULETTE_MIN_BET
+        ));
+        return;
+    }
+    if game.spend_cookies(wager) {
+        let net = casino.spin_roulette(wager, bet_type, rng);
+        if net > 0.0 {
+            game.add_cookies(wager + net);
+            game.push_log(format!(
+                "Roulette: {} wins! +{:.0} cookies!",
+                bet_type.label(),
+                net
+            ));
+        } else {
+            game.push_log(format!(
+                "Roulette: {} loses. Lost {:.0} cookies.",
+                bet_type.label(),
+                wager
+            ));
+        }
+        // Reset for next bet
+        casino.wager_input.clear();
+        casino.entering_wager = true;
+    } else {
+        game.push_log("Not enough cookies for that bet!".to_string());
+    }
+}
+
+// ─── Blackjack input handler ─────────────────────────────────────────────────
+
+fn handle_blackjack_input(
+    key: KeyEvent,
+    game: &mut GameState,
+    casino: &mut CasinoState,
+    rng: &mut rand::rngs::SmallRng,
+) -> bool {
+    // Check if we have an active hand
+    let phase = casino
+        .blackjack_hand
+        .as_ref()
+        .map(|h| h.phase)
+        .unwrap_or(casino::BlackjackPhase::Betting);
+
+    match key.code {
+        KeyCode::Char('q') | KeyCode::Char('Q') => return true,
+        KeyCode::Char('g') | KeyCode::Char('G') if phase != casino::BlackjackPhase::PlayerTurn => {
+            casino.active_game = None;
+            casino.wager_input.clear();
+            casino.entering_wager = false;
+            casino.blackjack_hand = None;
+        }
+        // Betting phase
+        KeyCode::Char(c) if c.is_ascii_digit() && casino.entering_wager => {
+            if casino.wager_input.len() < 12 {
+                casino.wager_input.push(c);
+            }
+        }
+        KeyCode::Backspace if casino.entering_wager => {
+            casino.wager_input.pop();
+        }
+        KeyCode::Enter if casino.entering_wager => {
+            if let Some(wager) = casino.parsed_wager() {
+                if wager < casino::BLACKJACK_MIN_BET {
+                    game.push_log(format!(
+                        "Min blackjack bet is {:.0} cookies.",
+                        casino::BLACKJACK_MIN_BET
+                    ));
+                } else if game.spend_cookies(wager) {
+                    casino.entering_wager = false;
+                    casino.deal_blackjack(wager, rng);
+                    // Check if resolved immediately (natural blackjack)
+                    if let Some(ref result) = casino.last_blackjack {
+                        match result.outcome {
+                            casino::BlackjackOutcome::PlayerBlackjack => {
+                                game.add_cookies(wager + result.net);
+                                game.push_log(format!(
+                                    "Blackjack! Natural 21! +{:.0} cookies!",
+                                    result.net
+                                ));
+                            }
+                            casino::BlackjackOutcome::Push => {
+                                game.add_cookies(wager);
+                                game.push_log("Push! Natural 21 vs 21. Bet returned.".to_string());
+                            }
+                            _ => {}
+                        }
+                    }
+                } else {
+                    game.push_log("Not enough cookies for that bet!".to_string());
+                }
+            }
+        }
+        // Player turn: Hit
+        KeyCode::Char('h') | KeyCode::Char('H')
+            if phase == casino::BlackjackPhase::PlayerTurn =>
+        {
+            let still_playing = casino.blackjack_hit(rng);
+            if !still_playing {
+                finalize_blackjack_result(game, casino);
+            }
+        }
+        // Player turn: Stand
+        KeyCode::Char('s') | KeyCode::Char('S')
+            if phase == casino::BlackjackPhase::PlayerTurn =>
+        {
+            casino.blackjack_stand(rng);
+            finalize_blackjack_result(game, casino);
+        }
+        // After resolved: New hand
+        KeyCode::Char('n') | KeyCode::Char('N')
+            if phase == casino::BlackjackPhase::Resolved =>
+        {
+            casino.clear_blackjack_hand();
+            casino.wager_input.clear();
+            casino.entering_wager = true;
+        }
+        _ => {}
+    }
+    false
+}
+
+fn finalize_blackjack_result(game: &mut GameState, casino: &mut CasinoState) {
+    if let Some(ref result) = casino.last_blackjack {
+        let wager = result.wager;
+        match result.outcome {
+            casino::BlackjackOutcome::PlayerWin | casino::BlackjackOutcome::DealerBust => {
+                game.add_cookies(wager + result.net);
+                game.push_log(format!("Blackjack: You win! +{:.0} cookies!", result.net));
+            }
+            casino::BlackjackOutcome::PlayerBlackjack => {
+                game.add_cookies(wager + result.net);
+                game.push_log(format!("BLACKJACK! +{:.0} cookies!", result.net));
+            }
+            casino::BlackjackOutcome::Push => {
+                game.add_cookies(wager);
+                game.push_log("Blackjack: Push! Bet returned.".to_string());
+            }
+            casino::BlackjackOutcome::PlayerBust => {
+                game.push_log(format!("Blackjack: Bust! Lost {:.0} cookies.", wager));
+            }
+            casino::BlackjackOutcome::DealerWin => {
+                game.push_log(format!(
+                    "Blackjack: Dealer wins. Lost {:.0} cookies.",
+                    wager
+                ));
+            }
+        }
     }
 }
 
