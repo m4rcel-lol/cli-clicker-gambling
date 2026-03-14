@@ -3,7 +3,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
+    widgets::{Block, BorderType, Borders, List, ListItem, Paragraph, Wrap},
 };
 
 use crate::app::{GameState, ASCENSION_THRESHOLD, UPGRADES_PER_PAGE};
@@ -34,6 +34,7 @@ const WHITE: Color = Color::Rgb(0xee, 0xee, 0xee);
 const NEON_PINK: Color = Color::Rgb(0xff, 0x00, 0x88);
 const NEON_GREEN: Color = Color::Rgb(0x00, 0xff, 0x66);
 const NEON_PURPLE: Color = Color::Rgb(0xaa, 0x44, 0xff);
+const BG_DARK: Color = Color::Rgb(0x10, 0x10, 0x18);
 
 const BUILDING_ICONS: [&str; 8] = [
     "\u{1f5b1}\u{fe0f}", // 🖱️
@@ -56,6 +57,10 @@ const PROGRESS_BAR_WIDTH: usize = 20;
 /// Top-level render entry point.
 pub fn render(frame: &mut Frame, game: &GameState, casino: &CasinoState, chat: &ChatState) {
     let area = frame.area();
+    // Fill the entire background with a dark colour for a polished look
+    let bg = Block::default().style(Style::default().bg(BG_DARK));
+    frame.render_widget(bg, area);
+
     if chat.chat_open {
         render_chat(frame, area, chat);
     } else if game.casino_open {
@@ -154,22 +159,25 @@ fn render_stats(frame: &mut Frame, area: Rect, game: &GameState) {
     let mut lines: Vec<Line> = vec![
         Line::from(vec![
             Span::styled(
-                " (::) COOKIE CLICKER ",
+                " 🍪 COOKIE CLICKER 🍪 ",
                 Style::default()
                     .fg(GOLD)
                     .add_modifier(Modifier::BOLD),
             ),
         ]),
-        Line::from(""),
+        Line::from(Span::styled(
+            " ─────────────────────",
+            Style::default().fg(GRAY_DIM),
+        )),
         Line::from(vec![
-            Span::styled(" Cookies  ", Style::default().fg(CYAN_MID)),
+            Span::styled(" 🍪 Cookies  ", Style::default().fg(CYAN_MID)),
             Span::styled(
                 &cookies_fmt,
                 Style::default().fg(WHITE).add_modifier(Modifier::BOLD),
             ),
         ]),
         Line::from(vec![
-            Span::styled(" CPS      ", Style::default().fg(CYAN_MID)),
+            Span::styled(" ⚡ CPS      ", Style::default().fg(CYAN_MID)),
             Span::styled(
                 format!("{}/s", cps_fmt),
                 Style::default()
@@ -178,18 +186,18 @@ fn render_stats(frame: &mut Frame, area: Rect, game: &GameState) {
             ),
         ]),
         Line::from(vec![
-            Span::styled(" Click    ", Style::default().fg(CYAN_MID)),
+            Span::styled(" 👆 Click    ", Style::default().fg(CYAN_MID)),
             Span::styled(
                 format!("+{}", click_fmt),
                 Style::default().fg(CYAN_BRIGHT),
             ),
         ]),
         Line::from(vec![
-            Span::styled(" Baked    ", Style::default().fg(CYAN_DIM)),
+            Span::styled(" 📊 Baked    ", Style::default().fg(CYAN_DIM)),
             Span::styled(&total_fmt, Style::default().fg(GRAY_LIGHT)),
         ]),
         Line::from(vec![
-            Span::styled(" Clicks   ", Style::default().fg(CYAN_DIM)),
+            Span::styled(" 🖱  Clicks   ", Style::default().fg(CYAN_DIM)),
             Span::styled(
                 format_number(game.total_clicks as f64),
                 Style::default().fg(GRAY_LIGHT),
@@ -322,9 +330,11 @@ fn render_stats(frame: &mut Frame, area: Rect, game: &GameState) {
 
     let block = Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(CYAN_DIM))
+        .style(Style::default().bg(BG_DARK))
         .title(Span::styled(
-            "╣ Stats ╠",
+            " ╣ Stats ╠ ",
             Style::default()
                 .fg(CYAN_BRIGHT)
                 .add_modifier(Modifier::BOLD),
@@ -436,7 +446,9 @@ fn render_buildings(frame: &mut Frame, area: Rect, game: &GameState) {
 
     let block = Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(CYAN_DIM))
+        .style(Style::default().bg(BG_DARK))
         .title(tab_title);
     let list = List::new(items).block(block);
     frame.render_widget(list, area);
@@ -535,7 +547,9 @@ fn render_upgrades(frame: &mut Frame, area: Rect, game: &GameState) {
 
     let block = Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(CYAN_DIM))
+        .style(Style::default().bg(BG_DARK))
         .title(tab_title);
     let list = List::new(items).block(block);
     frame.render_widget(list, area);
@@ -558,9 +572,11 @@ fn render_log(frame: &mut Frame, area: Rect, game: &GameState) {
 
     let block = Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(GRAY_DIM))
+        .style(Style::default().bg(BG_DARK))
         .title(Span::styled(
-            "╣ Activity Log ╠",
+            " ╣ Activity Log ╠ ",
             Style::default().fg(GRAY_LIGHT),
         ));
     let list = List::new(items).block(block);
@@ -662,9 +678,11 @@ fn render_hotkeys(frame: &mut Frame, area: Rect, game: &GameState) {
 
     let block = Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(GRAY_DIM))
+        .style(Style::default().bg(BG_DARK))
         .title(Span::styled(
-            "╣ Hotkeys ╠",
+            " ╣ Hotkeys ╠ ",
             Style::default().fg(GRAY_LIGHT),
         ));
     let paragraph = Paragraph::new(Line::from(spans)).block(block);
@@ -842,9 +860,11 @@ fn render_casino_menu(frame: &mut Frame, area: Rect, game: &GameState, casino: &
 
     let block = Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(NEON_PURPLE))
+        .style(Style::default().bg(BG_DARK))
         .title(Span::styled(
-            "\u{2563} \u{1f3b0} Casino \u{2560}",
+            " ╣ 🎰 Casino ╠ ",
             Style::default()
                 .fg(NEON_PINK)
                 .add_modifier(Modifier::BOLD),
@@ -988,9 +1008,11 @@ fn render_slots(frame: &mut Frame, area: Rect, game: &GameState, casino: &Casino
 
     let block = Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(GOLD_DIM))
+        .style(Style::default().bg(BG_DARK))
         .title(Span::styled(
-            "\u{2563} \u{1f3b0} Slot Machine \u{2560}",
+            " ╣ 🎰 Slot Machine ╠ ",
             Style::default().fg(GOLD).add_modifier(Modifier::BOLD),
         ));
     let paragraph = Paragraph::new(lines)
@@ -1114,9 +1136,11 @@ fn render_coinflip(frame: &mut Frame, area: Rect, game: &GameState, casino: &Cas
 
     let block = Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(CYAN_DIM))
+        .style(Style::default().bg(BG_DARK))
         .title(Span::styled(
-            "\u{2563} \u{1fa99} Coin Flip \u{2560}",
+            " ╣ 🪙 Coin Flip ╠ ",
             Style::default()
                 .fg(CYAN_BRIGHT)
                 .add_modifier(Modifier::BOLD),
@@ -1243,9 +1267,11 @@ fn render_dice(frame: &mut Frame, area: Rect, game: &GameState, casino: &CasinoS
 
     let block = Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(MAGENTA_DIM))
+        .style(Style::default().bg(BG_DARK))
         .title(Span::styled(
-            "\u{2563} \u{1f3b2} Dice Wager \u{2560}",
+            " ╣ 🎲 Dice Wager ╠ ",
             Style::default()
                 .fg(MAGENTA_BRIGHT)
                 .add_modifier(Modifier::BOLD),
@@ -1380,9 +1406,11 @@ fn render_roulette(frame: &mut Frame, area: Rect, game: &GameState, casino: &Cas
 
     let block = Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(GREEN_MID))
+        .style(Style::default().bg(BG_DARK))
         .title(Span::styled(
-            "╣ 🎡 Roulette ╠",
+            " ╣ 🎡 Roulette ╠ ",
             Style::default()
                 .fg(GREEN_BRIGHT)
                 .add_modifier(Modifier::BOLD),
@@ -1581,9 +1609,11 @@ fn render_blackjack(frame: &mut Frame, area: Rect, game: &GameState, casino: &Ca
 
     let block = Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(GOLD_DIM))
+        .style(Style::default().bg(BG_DARK))
         .title(Span::styled(
-            "╣ 🃏 Blackjack ╠",
+            " ╣ 🃏 Blackjack ╠ ",
             Style::default()
                 .fg(GOLD)
                 .add_modifier(Modifier::BOLD),
@@ -1655,9 +1685,11 @@ fn render_chat(frame: &mut Frame, area: Rect, chat: &ChatState) {
     ])];
     let header_block = Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(CYAN_DIM))
+        .style(Style::default().bg(BG_DARK))
         .title(Span::styled(
-            "╣ Chat ╠",
+            " ╣ Chat ╠ ",
             Style::default().fg(CYAN_BRIGHT).add_modifier(Modifier::BOLD),
         ));
     let header = Paragraph::new(header_lines)
@@ -1703,9 +1735,11 @@ fn render_chat(frame: &mut Frame, area: Rect, chat: &ChatState) {
 
     let msg_block = Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(GRAY_DIM))
+        .style(Style::default().bg(BG_DARK))
         .title(Span::styled(
-            "╣ Messages ╠",
+            " ╣ Messages ╠ ",
             Style::default().fg(GRAY_LIGHT),
         ));
     let msg_list = List::new(msg_items).block(msg_block);
@@ -1724,9 +1758,11 @@ fn render_chat(frame: &mut Frame, area: Rect, chat: &ChatState) {
     };
     let input_block = Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(CYAN_MID))
+        .style(Style::default().bg(BG_DARK))
         .title(Span::styled(
-            "╣ Input ╠",
+            " ╣ Input ╠ ",
             Style::default().fg(CYAN_BRIGHT),
         ));
     let input = Paragraph::new(Line::from(vec![
@@ -1769,9 +1805,11 @@ fn render_casino_hotkeys(frame: &mut Frame, area: Rect, keys: &[(&str, &str, Col
 
     let block = Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(GRAY_DIM))
+        .style(Style::default().bg(BG_DARK))
         .title(Span::styled(
-            "\u{2563} Hotkeys \u{2560}",
+            " ╣ Hotkeys ╠ ",
             Style::default().fg(GRAY_LIGHT),
         ));
     let paragraph = Paragraph::new(Line::from(spans)).block(block);
