@@ -47,6 +47,7 @@ const BUILDING_ICONS: [&str; 8] = [
 ];
 
 const CLOSE_TO_AFFORD_RATIO: f64 = 0.5;
+const PROGRESS_BAR_WIDTH: usize = 20;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  Public entry point
@@ -134,7 +135,7 @@ fn render_stats(frame: &mut Frame, area: Rect, game: &GameState) {
         ],
         [
             r"       _.---._       ",
-            r"     .' o      '.   ",
+            r"     .' o      '.    ",
             r"    /     o  o   \   ",
             r"   |  o    o     |   ",
             r"    \ o      o  /    ",
@@ -226,8 +227,8 @@ fn render_stats(frame: &mut Frame, area: Rect, game: &GameState) {
     // Prestige progress
     let progress_str = if game.total_baked < ASCENSION_THRESHOLD {
         let pct = (game.total_baked / ASCENSION_THRESHOLD * 100.0).min(100.0);
-        let filled = ((pct / 5.0) as usize).min(20);
-        let bar: String = "▓".repeat(filled) + &"░".repeat(20 - filled);
+        let filled = ((pct / (100.0 / PROGRESS_BAR_WIDTH as f64)) as usize).min(PROGRESS_BAR_WIDTH);
+        let bar: String = "▓".repeat(filled) + &"░".repeat(PROGRESS_BAR_WIDTH - filled);
         format!(" Prestige [{}] {:.1}%", bar, pct)
     } else {
         " Prestige [▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓] READY!".to_string()
