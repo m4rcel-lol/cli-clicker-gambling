@@ -14,7 +14,7 @@ use std::{
 };
 
 use crossterm::{
-    event::{self, Event as CrosstermEvent, KeyCode, KeyEvent, KeyModifiers},
+    event::{self, Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -198,7 +198,9 @@ fn handle_input(
 
     match key.code {
         KeyCode::Char('q') | KeyCode::Char('Q') => return true,
-        KeyCode::Char(' ') | KeyCode::Enter => game.mine_cookie(),
+        KeyCode::Char(' ') | KeyCode::Enter if key.kind == KeyEventKind::Press => {
+            game.mine_cookie();
+        }
         KeyCode::Char('c') | KeyCode::Char('C') => {
             if !game.collect_golden_cookie() {
                 game.push_log("No golden cookie right now!".to_string());
