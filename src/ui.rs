@@ -282,7 +282,7 @@ fn render_stats(frame: &mut Frame, area: Rect, game: &GameState) {
         )));
     }
 
-    // Frenzy indicator
+    // Frenzy indicator with countdown bar
     if game.frenzy_ticks > 0 {
         let secs = (game.frenzy_ticks as f32 * 0.25).ceil() as u32;
         let phase = game.animation_tick % 6;
@@ -302,6 +302,16 @@ fn render_stats(frame: &mut Frame, area: Rect, game: &GameState) {
             Style::default()
                 .fg(frenzy_color)
                 .add_modifier(Modifier::BOLD),
+        )));
+        // Frenzy countdown bar (120 ticks = full, 0 ticks = empty)
+        let max_frenzy_ticks: f64 = 120.0;
+        let pct = (game.frenzy_ticks as f64 / max_frenzy_ticks).clamp(0.0, 1.0);
+        let bar_w = PROGRESS_BAR_WIDTH;
+        let filled = (pct * bar_w as f64) as usize;
+        let bar: String = "▓".repeat(filled) + &"░".repeat(bar_w - filled);
+        lines.push(Line::from(Span::styled(
+            format!(" [{}] {:.0}%", bar, pct * 100.0),
+            Style::default().fg(frenzy_color),
         )));
     }
 
@@ -334,7 +344,7 @@ fn render_stats(frame: &mut Frame, area: Rect, game: &GameState) {
         .border_style(Style::default().fg(CYAN_DIM))
         .style(Style::default().bg(BG_DARK))
         .title(Span::styled(
-            " ╣ Stats ╠ ",
+            " ╣ Stats ╠ v0.1.0 ",
             Style::default()
                 .fg(CYAN_BRIGHT)
                 .add_modifier(Modifier::BOLD),
@@ -850,6 +860,22 @@ fn render_casino_menu(frame: &mut Frame, area: Rect, game: &GameState, casino: &
             Span::styled("   Net: ", Style::default().fg(GRAY_LIGHT)),
             Span::styled(net_str, Style::default().fg(net_color)),
         ]));
+        // Win rate: percentage of wagered that came back as winnings
+        if casino.total_wagered > 0.0 {
+            let win_rate = (casino.total_won / casino.total_wagered * 100.0).min(999.9);
+            let rate_color = if win_rate >= 100.0 { GREEN_BRIGHT } else { RED_BRIGHT };
+            lines.push(Line::from(vec![
+                Span::styled("  Return: ", Style::default().fg(GRAY_LIGHT)),
+                Span::styled(
+                    format!("{:.1}%", win_rate),
+                    Style::default().fg(rate_color).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!("  (Won back: {})", format_number(casino.total_won)),
+                    Style::default().fg(GRAY_DIM),
+                ),
+            ]));
+        }
         lines.push(Line::from(""));
     }
 
@@ -1716,9 +1742,16 @@ fn render_chat(frame: &mut Frame, area: Rect, chat: &ChatState) {
 
             let ping_marker = if is_pinged { " 🔔" } else { "" };
 
+            // Format timestamp as HH:MM
+            let time_str = format_epoch_time(msg.timestamp);
+
             ListItem::new(Line::from(vec![
                 Span::styled(
-                    format!(" {}: ", msg.sender),
+                    format!("{} ", time_str),
+                    Style::default().fg(GRAY_DIM),
+                ),
+                Span::styled(
+                    format!("{}: ", msg.sender),
                     Style::default().fg(sender_color).add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
@@ -1821,6 +1854,17 @@ fn render_casino_hotkeys(frame: &mut Frame, area: Rect, keys: &[(&str, &str, Col
 // ═══════════════════════════════════════════════════════════════════════════════
 
 fn format_number(n: f64) -> String {
+    // Guard against NaN, infinity, and negative values
+    if n.is_nan() {
+        return "NaN".to_string();
+    }
+    if n.is_infinite() {
+        return if n > 0.0 { "∞".to_string() } else { "-∞".to_string() };
+    }
+    if n < 0.0 {
+        return format!("-{}", format_number(-n));
+    }
+
     if n >= 1e21 {
         format!("{:.2}Sx", n / 1e21)
     } else if n >= 1e18 {
@@ -1834,18 +1878,11 @@ fn format_number(n: f64) -> String {
     } else if n >= 1e6 {
         format!("{:.2}M", n / 1e6)
     } else if n >= 1_000.0 {
-        // Comma-separated
+        // Comma-separated thousands
         let i = n as u64;
-        if i >= 1_000_000 {
-            let m = i / 1_000_000;
-            let k = (i % 1_000_000) / 1_000;
-            let r = i % 1_000;
-            format!("{},{:03},{:03}", m, k, r)
-        } else {
-            let k = i / 1_000;
-            let r = i % 1_000;
-            format!("{},{:03}", k, r)
-        }
+        let k = i / 1_000;
+        let r = i % 1_000;
+        format!("{},{:03}", k, r)
     } else {
         format!("{:.0}", n)
     }
@@ -1860,6 +1897,15 @@ fn die_ascii(n: u8) -> &'static str {
         5 => "\u{2684}",
         6 => "\u{2685}",
         _ => "?",
+    }
+}
+
+/// Format a Unix epoch timestamp as a local HH:MM string.
+fn format_epoch_time(epoch: u64) -> String {
+    use chrono::TimeZone;
+    match chrono::Local.timestamp_opt(epoch as i64, 0) {
+        chrono::LocalResult::Single(dt) => dt.format("%H:%M").to_string(),
+        _ => "--:--".to_string(),
     }
 }
 
@@ -1914,5 +1960,60 @@ fn die_face_art(n: u8) -> [&'static str; 5] {
             "\u{2502}     \u{2502}",
             "\u{2514}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2518}",
         ],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_number_small() {
+        assert_eq!(format_number(0.0), "0");
+        assert_eq!(format_number(42.0), "42");
+        assert_eq!(format_number(999.0), "999");
+    }
+
+    #[test]
+    fn test_format_number_thousands() {
+        assert_eq!(format_number(1_234.0), "1,234");
+        assert_eq!(format_number(999_999.0), "999,999");
+    }
+
+    #[test]
+    fn test_format_number_millions() {
+        assert_eq!(format_number(1_500_000.0), "1.50M");
+    }
+
+    #[test]
+    fn test_format_number_nan() {
+        assert_eq!(format_number(f64::NAN), "NaN");
+    }
+
+    #[test]
+    fn test_format_number_infinity() {
+        assert_eq!(format_number(f64::INFINITY), "∞");
+        assert_eq!(format_number(f64::NEG_INFINITY), "-∞");
+    }
+
+    #[test]
+    fn test_format_number_negative() {
+        assert_eq!(format_number(-500.0), "-500");
+        assert_eq!(format_number(-1_234.0), "-1,234");
+    }
+
+    #[test]
+    fn test_format_epoch_time_valid() {
+        // 2025-01-01 00:00:00 UTC = 1735689600
+        let result = format_epoch_time(1735689600);
+        // Should return a valid HH:MM format (exact value depends on local timezone)
+        assert!(result.contains(':'), "Time should contain a colon: {}", result);
+        assert!(result.len() == 5, "Time should be HH:MM format: {}", result);
+    }
+
+    #[test]
+    fn test_format_epoch_time_zero() {
+        let result = format_epoch_time(0);
+        assert!(result.contains(':'), "Time should contain a colon: {}", result);
     }
 }

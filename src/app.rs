@@ -349,6 +349,10 @@ impl GameState {
     pub fn spend_cookies(&mut self, amount: f64) -> bool {
         if self.cookies >= amount {
             self.cookies -= amount;
+            // Guard against tiny floating-point negative due to imprecision
+            if self.cookies < 0.0 {
+                self.cookies = 0.0;
+            }
             true
         } else {
             false
@@ -786,5 +790,21 @@ mod tests {
     fn test_factory_building_cost() {
         let gs = GameState::default();
         assert!((gs.buildings[4].next_cost() - 130_000.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_spend_cookies_clamps_to_zero() {
+        let mut gs = GameState::default();
+        gs.cookies = 100.0;
+        assert!(gs.spend_cookies(100.0));
+        assert!(gs.cookies >= 0.0, "Cookies should never go negative");
+    }
+
+    #[test]
+    fn test_spend_cookies_insufficient() {
+        let mut gs = GameState::default();
+        gs.cookies = 50.0;
+        assert!(!gs.spend_cookies(100.0));
+        assert!((gs.cookies - 50.0).abs() < 0.001, "Cookies unchanged on failed spend");
     }
 }

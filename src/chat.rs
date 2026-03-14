@@ -247,13 +247,17 @@ fn receiver_thread(
     incoming: Arc<Mutex<Vec<ChatMessage>>>,
     my_identity: String,
 ) {
-    let mut buf = [0u8; 4096];
+    let mut buf = [0u8; 8192];
     loop {
         match sock.recv_from(&mut buf) {
             Ok((n, _addr)) => {
                 if let Ok(msg) = serde_json::from_slice::<ChatMessage>(&buf[..n]) {
                     // Skip our own messages (we already added them locally)
                     if msg.sender == my_identity {
+                        continue;
+                    }
+                    // Validate incoming message: reject excessively long content or sender
+                    if msg.content.len() > MAX_MESSAGE_LEN || msg.sender.len() > 200 {
                         continue;
                     }
                     if let Ok(mut queue) = incoming.lock() {

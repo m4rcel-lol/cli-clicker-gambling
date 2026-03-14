@@ -75,6 +75,39 @@ cargo build --release
 
 ---
 
+## Cleaning & Reinstalling
+
+If you need to wipe the compiled artefacts and start fresh:
+
+```bash
+# Remove all build artefacts (debug + release)
+cargo clean
+
+# Then rebuild
+cargo build --release
+```
+
+If installed via `makepkg`:
+
+```bash
+# Uninstall the package
+sudo pacman -R cookie_clicker
+
+# Clean the PKGBUILD artefacts
+rm -rf pkg/ src/ *.pkg.tar.zst
+
+# Reinstall
+makepkg -si
+```
+
+To also wipe your save data and start a fresh game:
+
+```bash
+rm -rf "${XDG_CONFIG_HOME:-$HOME/.config}/cookie_clicker"
+```
+
+---
+
 ## Keybindings
 
 | Key | Action |
