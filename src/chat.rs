@@ -10,6 +10,8 @@ const CHAT_PORT: u16 = 47832;
 const MAX_CHAT_MESSAGES: usize = 50;
 /// Maximum message length.
 const MAX_MESSAGE_LEN: usize = 500;
+/// Maximum sender identity length accepted from the network.
+const MAX_SENDER_LEN: usize = 200;
 
 /// A single chat message transmitted over the network.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -257,7 +259,7 @@ fn receiver_thread(
                         continue;
                     }
                     // Validate incoming message: reject excessively long content or sender
-                    if msg.content.len() > MAX_MESSAGE_LEN || msg.sender.len() > 200 {
+                    if msg.content.len() > MAX_MESSAGE_LEN || msg.sender.len() > MAX_SENDER_LEN {
                         continue;
                     }
                     if let Ok(mut queue) = incoming.lock() {

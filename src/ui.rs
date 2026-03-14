@@ -303,8 +303,8 @@ fn render_stats(frame: &mut Frame, area: Rect, game: &GameState) {
                 .fg(frenzy_color)
                 .add_modifier(Modifier::BOLD),
         )));
-        // Frenzy countdown bar (120 ticks = full, 0 ticks = empty)
-        let max_frenzy_ticks: f64 = 120.0;
+        // Frenzy countdown bar
+        let max_frenzy_ticks = crate::app::FRENZY_DURATION_TICKS as f64;
         let pct = (game.frenzy_ticks as f64 / max_frenzy_ticks).clamp(0.0, 1.0);
         let bar_w = PROGRESS_BAR_WIDTH;
         let filled = (pct * bar_w as f64) as usize;
@@ -344,7 +344,7 @@ fn render_stats(frame: &mut Frame, area: Rect, game: &GameState) {
         .border_style(Style::default().fg(CYAN_DIM))
         .style(Style::default().bg(BG_DARK))
         .title(Span::styled(
-            " ╣ Stats ╠ v0.1.0 ",
+            format!(" ╣ Stats ╠ v{} ", env!("CARGO_PKG_VERSION")),
             Style::default()
                 .fg(CYAN_BRIGHT)
                 .add_modifier(Modifier::BOLD),
@@ -862,7 +862,7 @@ fn render_casino_menu(frame: &mut Frame, area: Rect, game: &GameState, casino: &
         ]));
         // Win rate: percentage of wagered that came back as winnings
         if casino.total_wagered > 0.0 {
-            let win_rate = (casino.total_won / casino.total_wagered * 100.0).min(999.9);
+            let win_rate = casino.total_won / casino.total_wagered * 100.0;
             let rate_color = if win_rate >= 100.0 { GREEN_BRIGHT } else { RED_BRIGHT };
             lines.push(Line::from(vec![
                 Span::styled("  Return: ", Style::default().fg(GRAY_LIGHT)),
