@@ -8,6 +8,8 @@ pub const MAX_LOG_ENTRIES: usize = 8;
 pub const UPGRADES_PER_PAGE: usize = 8;
 /// Probability that a golden cookie grants Frenzy mode instead of bonus cookies.
 pub const GOLDEN_FRENZY_PROBABILITY: f64 = 0.5;
+/// Duration of frenzy mode in ticks (120 ticks × 0.25s/tick = 30 seconds).
+pub const FRENZY_DURATION_TICKS: u32 = 120;
 
 // ─── Upgrades ────────────────────────────────────────────────────────────────
 
@@ -294,7 +296,7 @@ impl GameState {
             } else {
                 // Frenzy mode: 7x CPS for 120 ticks (30 seconds at 250ms/tick)
                 self.frenzy_multiplier = 7.0;
-                self.frenzy_ticks = 120;
+                self.frenzy_ticks = FRENZY_DURATION_TICKS;
                 self.push_log("🔥 Frenzy activated! 7x CPS for 30 seconds!".to_string());
             }
             true
@@ -349,6 +351,10 @@ impl GameState {
     pub fn spend_cookies(&mut self, amount: f64) -> bool {
         if self.cookies >= amount {
             self.cookies -= amount;
+            // Guard against tiny floating-point negative due to imprecision
+            if self.cookies < 0.0 {
+                self.cookies = 0.0;
+            }
             true
         } else {
             false
@@ -777,7 +783,7 @@ mod tests {
         gs.buildings[1].owned = 10; // 10 Grandmas = 10.0 raw CPS
         let normal_cps = gs.total_cps();
         gs.frenzy_multiplier = 7.0;
-        gs.frenzy_ticks = 120;
+        gs.frenzy_ticks = FRENZY_DURATION_TICKS;
         let frenzy_cps = gs.total_cps();
         assert!((frenzy_cps - normal_cps * 7.0).abs() < 0.001);
     }
@@ -786,5 +792,21 @@ mod tests {
     fn test_factory_building_cost() {
         let gs = GameState::default();
         assert!((gs.buildings[4].next_cost() - 130_000.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_spend_cookies_clamps_to_zero() {
+        let mut gs = GameState::default();
+        gs.cookies = 100.0;
+        assert!(gs.spend_cookies(100.0));
+        assert!(gs.cookies >= 0.0, "Cookies should never go negative");
+    }
+
+    #[test]
+    fn test_spend_cookies_insufficient() {
+        let mut gs = GameState::default();
+        gs.cookies = 50.0;
+        assert!(!gs.spend_cookies(100.0));
+        assert!((gs.cookies - 50.0).abs() < 0.001, "Cookies unchanged on failed spend");
     }
 }

@@ -63,12 +63,52 @@ fn load_game() -> GameState {
     let path = save_path();
     if path.exists() {
         if let Ok(contents) = fs::read_to_string(&path) {
-            if let Ok(gs) = serde_json::from_str::<GameState>(&contents) {
+            if let Ok(mut gs) = serde_json::from_str::<GameState>(&contents) {
+                sanitize_save(&mut gs);
                 return gs;
             }
         }
     }
     GameState::default()
+}
+
+/// Sanitize loaded save data to prevent corrupt / invalid states.
+fn sanitize_save(gs: &mut GameState) {
+    // Clamp cookies and totals to non-negative
+    if gs.cookies < 0.0 || gs.cookies.is_nan() {
+        gs.cookies = 0.0;
+    }
+    if gs.total_baked < 0.0 || gs.total_baked.is_nan() {
+        gs.total_baked = 0.0;
+    }
+
+    // Ensure buildings and upgrades match the expected defaults in length
+    let default_buildings = GameState::default().buildings;
+    let default_upgrades = GameState::default().upgrades;
+
+    if gs.buildings.len() != default_buildings.len() {
+        // Preserve owned counts for matching buildings, fill in new ones
+        let mut merged = default_buildings;
+        for (i, b) in merged.iter_mut().enumerate() {
+            if let Some(saved) = gs.buildings.get(i) {
+                b.owned = saved.owned;
+            }
+        }
+        gs.buildings = merged;
+    }
+
+    if gs.upgrades.len() != default_upgrades.len() {
+        let mut merged = default_upgrades;
+        for (i, u) in merged.iter_mut().enumerate() {
+            if let Some(saved) = gs.upgrades.get(i) {
+                u.purchased = saved.purchased;
+            }
+        }
+        gs.upgrades = merged;
+    }
+
+    // Re-derive ascend_available to match total_baked
+    gs.ascend_available = gs.total_baked >= app::ASCENSION_THRESHOLD;
 }
 
 // ─── Entry point ──────────────────────────────────────────────────────────────

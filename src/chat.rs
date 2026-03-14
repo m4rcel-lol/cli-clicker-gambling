@@ -10,6 +10,8 @@ const CHAT_PORT: u16 = 47832;
 const MAX_CHAT_MESSAGES: usize = 50;
 /// Maximum message length.
 const MAX_MESSAGE_LEN: usize = 500;
+/// Maximum sender identity length accepted from the network.
+const MAX_SENDER_LEN: usize = 200;
 
 /// A single chat message transmitted over the network.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -247,13 +249,17 @@ fn receiver_thread(
     incoming: Arc<Mutex<Vec<ChatMessage>>>,
     my_identity: String,
 ) {
-    let mut buf = [0u8; 4096];
+    let mut buf = [0u8; 8192];
     loop {
         match sock.recv_from(&mut buf) {
             Ok((n, _addr)) => {
                 if let Ok(msg) = serde_json::from_slice::<ChatMessage>(&buf[..n]) {
                     // Skip our own messages (we already added them locally)
                     if msg.sender == my_identity {
+                        continue;
+                    }
+                    // Validate incoming message: reject excessively long content or sender
+                    if msg.content.len() > MAX_MESSAGE_LEN || msg.sender.len() > MAX_SENDER_LEN {
                         continue;
                     }
                     if let Ok(mut queue) = incoming.lock() {
